@@ -60,8 +60,8 @@ const C={
   amber:"#D97706",rose:"#E03E52",purple:"#8B5CF6",slate:"#4A6280",
   text:"#E8F0FE",muted:"#5A7A9A",dim:"#3A5570",white:"#FFF"
 };
-const COINS=["USDT","USDC","BTC","ETH","BNB","TRX","SOL","DAI"];
-const COIN_C={USDT:"#26A17B",USDC:"#2775CA",BTC:"#F7931A",ETH:"#627EEA",BNB:"#F3BA2F",TRX:"#FF0013",SOL:"#9945FF",DAI:"#F5AC37"};
+const COINS=["USDT","USDC","USD","BTC","ETH","BNB","TRX","SOL","DAI"];
+const COIN_C={USDT:"#26A17B",USDC:"#2775CA",USD:"#85BB65",BTC:"#F7931A",ETH:"#627EEA",BNB:"#F3BA2F",TRX:"#FF0013",SOL:"#9945FF",DAI:"#F5AC37"};
 const TAGS=["VIP","Mayorista","Frecuente","Corporativo","Riesgo Alto"];
 const TAG_C={VIP:"#D97706",Mayorista:"#3B6FE8",Frecuente:"#0EA572",Corporativo:"#8B5CF6","Riesgo Alto":"#E03E52"};
 const METHODS=["transferencia","efectivo","nequi","daviplata","binance pay","cripto","otro"];
@@ -760,7 +760,7 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
 }
 
 // ─── VENTAS ───────────────────────────────────────────────────────────────
-function SalesModule({sales,inventory,clients,reload,toast}){
+function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
   const[sym,setSym]=useState("all");
