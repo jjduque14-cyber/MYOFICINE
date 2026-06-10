@@ -221,8 +221,8 @@ const api={
 // ─── Ledger & client stats ─────────────────────────────────────────────
 function buildLedger(name,sales,purchases,payments){
   const n=norm(name),rows=[];
-  sales.filter(s=>norm(s.client)===n).forEach(s=>rows.push({id:"v"+s.id,date:s.date,ts:s.created_at||"",doc:`VTA-${s.id.slice(-6).toUpperCase()}`,concept:`Venta ${fmtQ(s.quantity,s.symbol)} ${s.symbol} @ ${fmt(s.unit_price)}`,debit:+s.total,credit:0,kind:"venta",receipt:s.receipt_url}));
-  purchases.filter(p=>norm(p.supplier)===n).forEach(p=>rows.push({id:"c"+p.id,date:p.date,ts:p.created_at||"",doc:`CMP-${p.id.slice(-6).toUpperCase()}`,concept:`Compra ${fmtQ(p.quantity,p.symbol)} ${p.symbol} @ ${fmt(p.unit_cost)}`,debit:0,credit:+p.total,kind:"compra",receipt:p.receipt_url}));
+  sales.filter(s=>norm(s.client)===n).forEach(s=>rows.push({id:"v"+s.id,date:s.date,ts:s.created_at||"",doc:`VTA-${s.id.slice(-6).toUpperCase()}`,concept:`Le vendí ${fmtQ(s.quantity,s.symbol)} ${s.symbol} @ ${fmt(s.unit_price)}`,debit:+s.total,credit:0,kind:"venta",receipt:s.receipt_url}));
+  purchases.filter(p=>norm(p.supplier)===n).forEach(p=>rows.push({id:"c"+p.id,date:p.date,ts:p.created_at||"",doc:`CMP-${p.id.slice(-6).toUpperCase()}`,concept:`Le compré ${fmtQ(p.quantity,p.symbol)} ${p.symbol} @ ${fmt(p.unit_cost)}`,debit:0,credit:+p.total,kind:"compra",receipt:p.receipt_url}));
   payments.filter(p=>norm(p.party)===n).forEach(p=>rows.push({id:"p"+p.id,date:p.date,ts:p.created_at||"",doc:`PAG-${p.id.slice(-6).toUpperCase()}`,concept:(p.direction==="recibido"?"Pago recibido":"Pago realizado")+(p.notes?` · ${p.notes}`:""),debit:p.direction==="realizado"?+p.amount:0,credit:p.direction==="recibido"?+p.amount:0,kind:"pago",receipt:p.receipt_url}));
   rows.sort((a,b)=>a.date===b.date?String(a.ts).localeCompare(String(b.ts)):a.date.localeCompare(b.date));
   let saldo=0;rows.forEach(r=>{saldo+=r.debit-r.credit;r.saldo=saldo;});
@@ -1112,7 +1112,7 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
   ];
 
   return <React.Fragment>
-    <Modal title={`👤 ${client.name}`} onClose={onClose} ultra>
+    <Modal title={`👤 ${client.name}${st.vs.length>0&&st.cs.length>0?' · Cliente & Proveedor':st.cs.length>0?' · Proveedor':' · Cliente'}`} onClose={onClose} ultra>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {/* Header ficha */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
@@ -1131,6 +1131,18 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
             <Btn small variant="sec" onClick={onEdit}>✏️ Editar</Btn>
           </div>
         </div>
+        {/* Resumen relación comercial */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {st.vs.length>0&&<div style={{background:`${C.green}15`,border:`1px solid ${C.green}40`,borderRadius:8,padding:"7px 12px",fontSize:11}}>
+            <span style={{color:C.muted}}>💰 Le vendí: </span><b style={{color:C.green}}>{fmt(st.totalVendido)}</b><span style={{color:C.muted}}> · {st.vs.length} ventas</span>
+          </div>}
+          {st.cs.length>0&&<div style={{background:`${C.amber}15`,border:`1px solid ${C.amber}40`,borderRadius:8,padding:"7px 12px",fontSize:11}}>
+            <span style={{color:C.muted}}>🛒 Le compré: </span><b style={{color:C.amber}}>{fmt(st.totalComprado)}</b><span style={{color:C.muted}}> · {st.cs.length} compras</span>
+          </div>}
+          {Math.abs(st.saldo)>0.01&&<div style={{background:`${st.saldo>0?C.rose:C.blue}15`,border:`1px solid ${st.saldo>0?C.rose:C.blue}40`,borderRadius:8,padding:"7px 12px",fontSize:11}}>
+            <span style={{color:C.muted}}>{st.saldo>0?"⚠️ Nos debe:":"✅ A su favor:"} </span><b style={{color:st.saldo>0?C.rose:C.blue}}>{fmt(Math.abs(st.saldo))}</b>
+          </div>}
+        </div>
         {client.notes&&<p style={{margin:0,fontSize:11,color:C.muted,background:C.panel,padding:"7px 11px",borderRadius:6}}>💬 {client.notes}</p>}
 
         {/* Tabs */}
@@ -1142,12 +1154,12 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
         {/* RESUMEN */}
         {tab==="resumen"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
-            <Stat small label="Operaciones" value={st.ops} sub={`${st.vs.length}v · ${st.cs.length}c`}/>
-            <Stat small label="Vol. COP" value={fmtK(st.volCOP)} accent={C.blue}/>
-            <Stat small label="Vol. USDT" value={fmtQ(st.volBySym.USDT||0,"USDT")} accent={COIN_C.USDT}/>
-            <Stat small label="Utilidad" value={fmtK(st.profit)} accent={C.green}/>
-            <Stat small label="Ticket prom." value={fmtK(st.ticket)}/>
-            <Stat small label="Frec. venta" value={`${st.freqV}/mes`} sub={`compra: ${st.freqC}/mes`}/>
+            <Stat small label="Total Operaciones" value={st.ops} sub={`${st.vs.length} ventas · ${st.cs.length} compras`}/>
+            <Stat small label="Le Vendí" value={fmtK(st.totalVendido)} accent={C.green} sub={`${st.vs.length} ventas`}/>
+            <Stat small label="Le Compré" value={fmtK(st.totalComprado)} accent={C.amber} sub={`${st.cs.length} compras`}/>
+            <Stat small label="Utilidad Generada" value={fmtK(st.profit)} accent={C.green}/>
+            <Stat small label="Vol. USDT Total" value={fmtQ(st.volBySym.USDT||0,"USDT")} accent={COIN_C.USDT}/>
+            <Stat small label="Ticket Promedio" value={fmtK(st.ticket)}/>
           </div>
           <div style={{background:C.panel,borderRadius:8,padding:12}}>
             <h4 style={{margin:"0 0 8px",fontSize:12,fontWeight:600}}>Actividad 12 meses (M COP)</h4>
@@ -1228,14 +1240,33 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
   </React.Fragment>;
 }
 
-function ClientsModule({clients,sales,purchases,payments,reload,toast}){
+// ─── MERGED CONTACTS (clientes + proveedores unidos por nombre) ──────────
+function useContacts(clients, suppliers) {
+  return useMemo(() => {
+    const map = {};
+    clients.forEach(c => {
+      const k = norm(c.name);
+      if (!map[k]) map[k] = {...c, _isClient:true, _isSupplier:false};
+      else { map[k]._isClient = true; map[k] = {...map[k], ...c}; }
+    });
+    suppliers.forEach(s => {
+      const k = norm(s.name);
+      if (!map[k]) map[k] = {...s, _isClient:false, _isSupplier:true};
+      else { map[k]._isSupplier = true; }
+    });
+    return Object.values(map);
+  }, [clients, suppliers]);
+}
+
+function ClientsModule({clients,sales,purchases,payments,reload,toast,suppliers}){
   const[search,setSearch]=useState("");const[sort,setSort]=useState("profit");const[tagF,setTagF]=useState("all");
   const[formModal,setFormModal]=useState(false);const[editC,setEditC]=useState(null);const[detail,setDetail]=useState(null);
 
-  const enriched=useMemo(()=>clients.map(c=>{
+  const contacts = useContacts(clients, suppliers);
+  const enriched=useMemo(()=>contacts.map(c=>{
     const st=clientStats(c,sales,purchases,payments);
-    return{...c,_ops:st.ops,_vol:st.volCOP,_profit:st.profit,_usdt:st.volBySym.USDT||0,_last:st.last,_saldo:st.saldo,_daysSince:st.daysSince};
-  }),[clients,sales,purchases,payments]);
+    return{...c,_ops:st.ops,_vol:st.volCOP,_profit:st.profit,_usdt:st.volBySym.USDT||0,_last:st.last,_saldo:st.saldo,_daysSince:st.daysSince,_isClient:c._isClient,_isSupplier:c._isSupplier};
+  }),[contacts,sales,purchases,payments]);
 
   const filtered=enriched.filter(c=>(norm(c.name).includes(norm(search))||norm(c.city).includes(norm(search))||norm(c.phone).includes(norm(search)))
     &&(tagF==="all"||(tagF==="activo"||tagF==="inactivo"?((c.status||"activo")===tagF):(c.tags||[]).includes(tagF))))
@@ -1243,7 +1274,15 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast}){
 
   const delClient=async r=>{if(!confirm(`¿Eliminar cliente ${r.name}?`))return;try{await api.deleteClient(r.id);await reload();toast("Cliente eliminado");}catch(e){toast(e.message,"error");};};
   const cols=[
-    {key:"name",label:"Cliente",render:(v,r)=><div><b style={{fontSize:13}}>{v}</b><div style={{display:"flex",gap:3,marginTop:2}}>{(r.tags||[]).map(t=><Badge key={t} label={t} color={TAG_C[t]||C.slate}/>)}</div></div>},
+    {key:"name",label:"Contacto",render:(v,r)=><div>
+      <b style={{fontSize:13}}>{v}</b>
+      <div style={{display:"flex",gap:3,marginTop:2,flexWrap:"wrap"}}>
+        {r._isClient&&r._isSupplier&&<Badge label="Cliente + Proveedor" color={C.purple}/>}
+        {r._isClient&&!r._isSupplier&&<Badge label="Cliente" color={C.blue}/>}
+        {!r._isClient&&r._isSupplier&&<Badge label="Proveedor" color={C.amber}/>}
+        {(r.tags||[]).map(t=><Badge key={t} label={t} color={TAG_C[t]||C.slate}/>)}
+      </div>
+    </div>},
     {key:"_ops",label:"Ops"},{key:"_vol",label:"Volumen",render:v=><span style={{color:C.blue,fontWeight:600}}>{fmtK(v)}</span>},
     {key:"_usdt",label:"USDT",render:v=><span style={{color:COIN_C.USDT,fontFamily:"monospace"}}>{fmtQ(v,"USDT")}</span>},
     {key:"_profit",label:"Utilidad",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmtK(v)}</b>},
@@ -1253,7 +1292,7 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast}){
   ];
 
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Clientes" sub={`${clients.length} registrados · toca para ver ficha completa`} action="Nuevo Cliente" onAction={()=>{setEditC(null);setFormModal(true);}}
+    <Head title="Contactos" sub={`${contacts.length} contactos · clientes y proveedores · toca para ver ficha`} action="Nuevo Cliente" onAction={()=>{setEditC(null);setFormModal(true);}}
       extra={<Btn small variant="sec" onClick={()=>exportCSV(["Nombre","Doc","Tel","Ciudad","Ops","VolCOP","USDT","Utilidad","Saldo","Última"],filtered.map(c=>[c.name,c.document||"",c.phone||"",c.city||"",c._ops,c._vol,c._usdt,c._profit,c._saldo,c._last||""]),`clientes-${today()}.csv`)}>📥 Excel</Btn>}/>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
       <div style={{flex:1,minWidth:200,position:"relative"}}>
