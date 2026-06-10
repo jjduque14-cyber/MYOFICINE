@@ -331,25 +331,130 @@ function PeriodBar({period,setPeriod,from,setFrom,to,setTo}){
   </div>;
 }
 
-// ─── LOGIN ────────────────────────────────────────────────────────────────
+// ─── AUTH (Login / Register / Reset Password) ─────────────────────────────
 function Login({onLogin}){
-  const[email,setEmail]=useState("");const[pass,setPass]=useState("");const[err,setErr]=useState("");const[loading,setLoading]=useState(false);
-  const submit=async()=>{setErr("");setLoading(true);try{onLogin(await api.login(email,pass));}catch(e){setErr("Credenciales incorrectas");}finally{setLoading(false);}};
-  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-    <div className="fade-in" style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:36,width:"100%",maxWidth:380}}>
-      <div style={{textAlign:"center",marginBottom:28}}>
-        <div style={{fontSize:48,marginBottom:8,filter:"drop-shadow(0 0 12px rgba(38,161,123,.4))"}}>₿</div>
-        <h1 style={{margin:0,fontSize:22,fontWeight:800,background:"linear-gradient(135deg,#26A17B,#2DC48A)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Casa de Cambio Pro</h1>
-        <p style={{margin:"5px 0 0",fontSize:12,color:C.muted}}>Plataforma OTC · v3.0</p>
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <Inp label="Correo" value={email} onChange={setEmail} placeholder="tu@correo.com"/>
-        <Inp label="Contraseña" type="password" value={pass} onChange={setPass} placeholder="••••••••"/>
-        {err&&<p style={{margin:0,fontSize:12,color:C.rose,background:"#2D1218",padding:"8px 11px",borderRadius:6}}>{err}</p>}
-        <Btn onClick={submit} disabled={loading} full>{loading?"Ingresando...":"Ingresar"}</Btn>
-      </div>
+  const[screen,setScreen]=useState("login");
+  const[err,setErr]=useState("");const[ok,setOk]=useState("");const[loading,setLoading]=useState(false);
+
+  // Login
+  const[email,setEmail]=useState("");const[pass,setPass]=useState("");
+
+  // Register
+  const[reg,setReg]=useState({firstName:"",lastName:"",phone:"",email:"",pass:"",pass2:""});
+  const fr=k=>v=>setReg(p=>({...p,[k]:v}));
+
+  // Reset
+  const[resetEmail,setResetEmail]=useState("");
+
+  const doLogin=async()=>{
+    setErr("");setLoading(true);
+    try{onLogin(await api.login(email,pass));}
+    catch(e){setErr("Correo o contraseña incorrectos");}
+    finally{setLoading(false);}
+  };
+
+  const doRegister=async()=>{
+    setErr("");
+    if(!reg.firstName||!reg.email||!reg.pass){setErr("Nombre, correo y contraseña son obligatorios");return;}
+    if(reg.pass!==reg.pass2){setErr("Las contraseñas no coinciden");return;}
+    if(reg.pass.length<6){setErr("La contraseña debe tener mínimo 6 caracteres");return;}
+    setLoading(true);
+    try{
+      const{data,error}=await sb.auth.signUp({email:reg.email,password:reg.pass});
+      if(error)throw error;
+      // Save profile
+      if(data.user){
+        await sb.from("profiles").upsert({
+          id:data.user.id,
+          name:`${reg.firstName} ${reg.lastName}`.trim(),
+          first_name:reg.firstName,last_name:reg.lastName,
+          phone:reg.phone,role:"admin",business:"Mi Empresa"
+        });
+      }
+      setOk("✓ Cuenta creada. Revisa tu correo para confirmar y luego inicia sesión.");
+      setScreen("login");
+    }
+    catch(e){
+      if(e.message.includes("already registered"))setErr("Este correo ya tiene una cuenta. Inicia sesión.");
+      else setErr(e.message);
+    }
+    finally{setLoading(false);}
+  };
+
+  const doReset=async()=>{
+    setErr("");setOk("");setLoading(true);
+    try{
+      const{error}=await sb.auth.resetPasswordForEmail(resetEmail,{redirectTo:window.location.origin});
+      if(error)throw error;
+      setOk("✓ Revisa tu correo — te enviamos un enlace para restablecer tu contraseña.");
+    }
+    catch(e){setErr(e.message);}
+    finally{setLoading(false);}
+  };
+
+  const brand=<div style={{textAlign:"center",marginBottom:24}}>
+    <div style={{fontSize:44,marginBottom:6,filter:"drop-shadow(0 0 12px rgba(38,161,123,.4))"}}>₿</div>
+    <h1 style={{margin:0,fontSize:21,fontWeight:800,background:"linear-gradient(135deg,#26A17B,#2DC48A)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Casa de Cambio Pro</h1>
+    <p style={{margin:"4px 0 0",fontSize:11,color:C.muted}}>Plataforma OTC · v3.0</p>
+  </div>;
+
+  const wrap=ch=><div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div className="fade-in" style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:32,width:"100%",maxWidth:400}}>
+      {ch}
     </div>
   </div>;
+
+  const ErrBox=()=>err?<p style={{margin:0,fontSize:12,color:C.rose,background:"#2D1218",padding:"8px 11px",borderRadius:6}}>{err}</p>:null;
+  const OkBox=()=>ok?<p style={{margin:0,fontSize:12,color:C.green,background:"#0a1f14",padding:"8px 11px",borderRadius:6}}>{ok}</p>:null;
+
+  // ── LOGIN ──────────────────────────────────────────────────
+  if(screen==="login") return wrap(<React.Fragment>
+    {brand}
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <Inp label="Correo" value={email} onChange={setEmail} placeholder="tu@correo.com"/>
+      <Inp label="Contraseña" type="password" value={pass} onChange={setPass} placeholder="••••••••"/>
+      <ErrBox/><OkBox/>
+      <Btn onClick={doLogin} disabled={loading} full>{loading?"Ingresando...":"Ingresar"}</Btn>
+      <div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
+        <button onClick={()=>{setErr("");setOk("");setScreen("reset");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer"}}>¿Olvidaste tu contraseña?</button>
+        <button onClick={()=>{setErr("");setOk("");setScreen("register");}} style={{background:"none",border:"none",color:C.accentL,fontSize:11,cursor:"pointer",fontWeight:600}}>Crear cuenta →</button>
+      </div>
+    </div>
+  </React.Fragment>);
+
+  // ── REGISTRO ───────────────────────────────────────────────
+  if(screen==="register") return wrap(<React.Fragment>
+    {brand}
+    <h3 style={{margin:"0 0 14px",fontSize:15,fontWeight:700,textAlign:"center"}}>Crear cuenta nueva</h3>
+    <div style={{display:"flex",flexDirection:"column",gap:9}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <Inp label="Nombre *" value={reg.firstName} onChange={fr("firstName")} placeholder="Juan"/>
+        <Inp label="Apellido" value={reg.lastName} onChange={fr("lastName")} placeholder="Duque"/>
+      </div>
+      <Inp label="Teléfono" value={reg.phone} onChange={fr("phone")} placeholder="+57 300 000 0000"/>
+      <Inp label="Correo *" value={reg.email} onChange={fr("email")} placeholder="tu@correo.com"/>
+      <Inp label="Contraseña *" type="password" value={reg.pass} onChange={fr("pass")} placeholder="Mínimo 6 caracteres"/>
+      <Inp label="Confirmar contraseña *" type="password" value={reg.pass2} onChange={fr("pass2")} placeholder="Repite la contraseña"/>
+      <ErrBox/>
+      <Btn onClick={doRegister} disabled={loading} full>{loading?"Creando cuenta...":"Crear Cuenta"}</Btn>
+      <button onClick={()=>{setErr("");setOk("");setScreen("login");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",textAlign:"center",marginTop:2}}>← Volver al inicio de sesión</button>
+    </div>
+  </React.Fragment>);
+
+  // ── RECUPERAR CONTRASEÑA ───────────────────────────────────
+  if(screen==="reset") return wrap(<React.Fragment>
+    {brand}
+    <h3 style={{margin:"0 0 6px",fontSize:15,fontWeight:700,textAlign:"center"}}>Recuperar contraseña</h3>
+    <p style={{margin:"0 0 14px",fontSize:12,color:C.muted,textAlign:"center"}}>Te enviamos un enlace a tu correo</p>
+    <div style={{display:"flex",flexDirection:"column",gap:9}}>
+      <Inp label="Correo" value={resetEmail} onChange={setResetEmail} placeholder="tu@correo.com"/>
+      <ErrBox/><OkBox/>
+      {!ok&&<Btn onClick={doReset} disabled={loading} full>{loading?"Enviando...":"Enviar enlace"}</Btn>}
+      <button onClick={()=>{setErr("");setOk("");setScreen("login");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",textAlign:"center"}}>← Volver al inicio de sesión</button>
+    </div>
+  </React.Fragment>);
+
+  return null;
 }
 
 // ─── PAYMENT MODAL ────────────────────────────────────────────────────────
