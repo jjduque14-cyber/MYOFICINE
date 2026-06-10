@@ -679,7 +679,7 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
 }
 
 // ─── COMPRAS ──────────────────────────────────────────────────────────────
-function PurchasesModule({purchases,inventory,suppliers,reload,toast}){
+function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
   const empty={date:today(),symbol:"USDT",quantity:"",unit_cost:"",supplier:"",pay_method:"transferencia",notes:"",payType:"contado",initial_paid:"",due_date:""};
@@ -733,7 +733,9 @@ function PurchasesModule({purchases,inventory,suppliers,reload,toast}){
           {curInv&&+curInv.quantity>0&&<span style={{fontSize:12,color:C.muted}}>Nuevo CPP: <b style={{color:C.text}}>{fmt((+curInv.quantity*+curInv.avg_cost+ +form.quantity*+form.unit_cost)/(+curInv.quantity+ +form.quantity))}</b></span>}
         </div>}
         <Inp label="Proveedor" value={form.supplier} onChange={f("supplier")} list="sup-dl" placeholder="Nombre o alias"/>
-        <datalist id="sup-dl">{suppliers.map(s=><option key={s.id} value={s.name}/>)}</datalist>
+        <datalist id="sup-dl">
+          {[...suppliers.map(s=>s.name),...clients.map(c=>c.name)].filter((v,i,a)=>a.indexOf(v)===i).sort().map((name,i)=><option key={i} value={name}/>)}
+        </datalist>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Sel label="Forma pago" value={form.payType} onChange={f("payType")} options={[{value:"contado",label:"💵 Contado"},{value:"credito",label:"📅 Crédito"}]}/>
           <Sel label="Método" value={form.pay_method} onChange={f("pay_method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
@@ -827,7 +829,9 @@ function SalesModule({sales,inventory,clients,reload,toast}){
           <span style={{fontSize:13,color:C.muted}}>Utilidad: <b style={{color:estP>=0?C.green:C.rose,fontSize:15}}>{fmt(estP)}</b></span>
         </div>}
         <Inp label="Cliente" value={form.client} onChange={f("client")} list="cli-dl" placeholder="Nombre o alias"/>
-        <datalist id="cli-dl">{clients.map(c=><option key={c.id} value={c.name}/>)}</datalist>
+        <datalist id="cli-dl">
+          {[...clients.map(c=>c.name),...suppliers.map(s=>s.name)].filter((v,i,a)=>a.indexOf(v)===i).sort().map((name,i)=><option key={i} value={name}/>)}
+        </datalist>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Sel label="Forma pago" value={form.payType} onChange={f("payType")} options={[{value:"contado",label:"💵 Contado"},{value:"credito",label:"📅 Crédito"}]}/>
           <Sel label="Método" value={form.pay_method} onChange={f("pay_method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
