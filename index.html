@@ -6,17 +6,12 @@
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<meta name="apple-mobile-web-app-title" content="Libro"/>
-<meta name="theme-color" content="#4F6EF7"/>
-<title>Libro Empresarial</title>
+<meta name="apple-mobile-web-app-title" content="Casa de Cambio"/>
+<meta name="theme-color" content="#26A17B"/>
+<title>Casa de Cambio Digital</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
 
-<!-- ════════════════════════════════════════════════════════
-  ⚠️  CONFIGURACIÓN — Edita solo estas 2 líneas:
-     1. Ve a supabase.com → tu proyecto → Settings → API
-     2. Copia "Project URL" y "anon public key"
-════════════════════════════════════════════════════════ -->
 <script>
   const SUPABASE_URL = "https://tqcfsgnyjpxshovgoogz.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxY2ZzZ255anB4c2hvdmdvb2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMjYxMjksImV4cCI6MjA5NjYwMjEyOX0.6_ws11VU-lMXqW7GyZ8ckQBvOdGea9BYTQuDOtjDMQI";
@@ -29,1960 +24,1266 @@
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-:root{
-  --bg:#080D18;--panel:#0F1623;--card:#161F30;--card2:#1C2640;
-  --border:#1E2D45;--accent:#4F6EF7;--accentL:#7B94F9;
-  --green:#10B981;--amber:#F59E0B;--rose:#F43F5E;
-  --slate:#64748B;--text:#E2E8F0;--muted:#64748B;
-}
-html,body,#root{height:100%;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif}
+:root{--bg:#070C16;--panel:#0E1522;--card:#151E30;--card2:#1B2640;--border:#1E2D45}
+html,body,#root{height:100%;background:var(--bg);color:#E2E8F0;font-family:'Inter',system-ui,sans-serif}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:var(--panel)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
 input,select,button{font-family:inherit}
-input::placeholder{color:var(--muted)}
+input::placeholder{color:#64748B}
 input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+@media print{
+  body *{visibility:hidden}
+  #print-area,#print-area *{visibility:visible}
+  #print-area{position:absolute!important;inset:0!important;padding:24px!important}
+  .no-print{display:none!important}
+}
 </style>
 </head>
 <body>
 <div id="root"></div>
 
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useCallback, useRef, useMemo } = React;
-
-// ─── Supabase client ──────────────────────────────────────────────────────────
+const { useState, useEffect, useMemo } = React;
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let UID = null; // user id actual — se asigna en login
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
+// ─── Tokens ───────────────────────────────────────────────────────────────
 const C = {
-  bg:"#080D18",panel:"#0F1623",card:"#161F30",card2:"#1C2640",
-  border:"#1E2D45",accent:"#4F6EF7",accentL:"#7B94F9",
-  green:"#10B981",amber:"#F59E0B",rose:"#F43F5E",
-  slate:"#64748B",text:"#E2E8F0",muted:"#64748B",white:"#FFFFFF"
+  bg:"#070C16",panel:"#0E1522",card:"#151E30",card2:"#1B2640",border:"#1E2D45",
+  accent:"#26A17B",accentL:"#3DD9A4",blue:"#4F6EF7",green:"#10B981",
+  amber:"#F59E0B",rose:"#F43F5E",slate:"#64748B",text:"#E2E8F0",muted:"#64748B",white:"#FFF"
 };
+const COINS = ["USDT","USDC","BTC","ETH","BNB","TRX","SOL","DAI"];
+const COIN_C = {USDT:"#26A17B",USDC:"#2775CA",BTC:"#F7931A",ETH:"#627EEA",BNB:"#F3BA2F",TRX:"#FF0013",SOL:"#9945FF",DAI:"#F5AC37"};
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────
 const fmt = n => new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0}).format(n||0);
-const fmtK = n => n>=1e6?`$${(n/1e6).toFixed(1)}M`:n>=1000?`$${(n/1000).toFixed(0)}K`:`$${Math.round(n||0)}`;
+const fmtK = n => { const a=Math.abs(n||0); if(a>=1e9)return`$${(n/1e9).toFixed(1)}MM`; if(a>=1e6)return`$${(n/1e6).toFixed(1)}M`; if(a>=1e3)return`$${(n/1e3).toFixed(0)}K`; return`$${Math.round(n||0)}`; };
+const fmtQ = (n,s) => { const d=s==="BTC"?8:(s==="ETH"||s==="SOL")?4:2; return parseFloat((+n||0).toFixed(d)).toLocaleString("es-CO",{maximumFractionDigits:d}); };
 const today = () => new Date().toISOString().split("T")[0];
-const monthNow = () => new Date().toISOString().slice(0,7);
+const norm = s => (s||"").trim().toLowerCase();
+const monthKey = () => today().slice(0,7);
 
-// ─── Demo data (se usa si Supabase no está configurado) ───────────────────────
-const DEMO_MODE = false;
+function inPeriod(dateStr, p, from, to){
+  if(!dateStr) return false;
+  if(p==="all") return true;
+  if(p==="today") return dateStr===today();
+  if(p==="week"){ const d=new Date(dateStr+"T12:00:00"); const lim=new Date(); lim.setDate(lim.getDate()-7); return d>=lim; }
+  if(p==="month") return dateStr.slice(0,7)===monthKey();
+  if(p==="year") return dateStr.slice(0,4)===today().slice(0,4);
+  if(p==="custom") return (!from||dateStr>=from)&&(!to||dateStr<=to);
+  return true;
+}
 
-const DEMO = {
-  clients:[
-    {id:"c1",name:"María González",phone:"315-234-5678",city:"Bogotá",address:"Cra 7 #45-12",notes:"Cliente frecuente",total_bought:2800000,balance:450000,last_purchase:"2025-06-01"},
-    {id:"c2",name:"Carlos Rodríguez",phone:"300-987-6543",city:"Medellín",address:"Cll 80 #23-45",notes:"",total_bought:1500000,balance:0,last_purchase:"2025-05-28"},
-    {id:"c3",name:"Sofía Martínez",phone:"321-456-7890",city:"Cali",address:"Av 5N #12-34",notes:"Prefiere transferencia",total_bought:980000,balance:230000,last_purchase:"2025-06-03"},
-    {id:"c4",name:"Andrés López",phone:"312-345-6789",city:"Barranquilla",address:"Cll 72 #45-67",notes:"",total_bought:3200000,balance:780000,last_purchase:"2025-05-15"},
-  ],
-  products:[
-    {id:"p1",name:"Camiseta Básica",sku:"CAM-001",stock:45,min_stock:10,cost:28000,price:55000,category:"Ropa"},
-    {id:"p2",name:"Pantalón Jean",sku:"PAN-002",stock:8,min_stock:10,cost:65000,price:120000,category:"Ropa"},
-    {id:"p3",name:"Zapatos Deportivos",sku:"ZAP-003",stock:22,min_stock:5,cost:85000,price:160000,category:"Calzado"},
-    {id:"p4",name:"Bolso de Cuero",sku:"BOL-004",stock:3,min_stock:5,cost:120000,price:230000,category:"Accesorios"},
-    {id:"p5",name:"Gorra Snapback",sku:"GOR-005",stock:60,min_stock:15,cost:18000,price:38000,category:"Accesorios"},
-  ],
-  sales:[
-    {id:"s1",date:"2025-06-09",client_name:"María González",product:"Camiseta Básica",qty:3,cost:28000,price:55000,status:"paid",paid:165000,notes:""},
-    {id:"s2",date:"2025-06-08",client_name:"Sofía Martínez",product:"Pantalón Jean",qty:1,cost:65000,price:120000,status:"partial",paid:80000,notes:"Abonó 80k"},
-    {id:"s3",date:"2025-06-07",client_name:"Andrés López",product:"Bolso de Cuero",qty:2,cost:120000,price:230000,status:"pending",paid:0,notes:"Entrega domicilio"},
-    {id:"s4",date:"2025-06-05",client_name:"Carlos Rodríguez",product:"Zapatos Deportivos",qty:1,cost:85000,price:160000,status:"paid",paid:160000,notes:""},
-    {id:"s5",date:"2025-06-04",client_name:"María González",product:"Gorra Snapback",qty:5,cost:18000,price:38000,status:"paid",paid:190000,notes:""},
-  ],
-  expenses:[
-    {id:"e1",date:"2025-06-01",category:"Arriendo",description:"Arriendo local junio",amount:800000},
-    {id:"e2",date:"2025-06-03",category:"Servicios",description:"Agua, luz, internet",amount:280000},
-    {id:"e3",date:"2025-06-05",category:"Transporte",description:"Domicilios semana",amount:150000},
-    {id:"e4",date:"2025-06-07",category:"Publicidad",description:"Instagram Ads",amount:200000},
-  ],
-  suppliers:[
-    {id:"sup1",name:"Textiles S.A.",contact:"Pedro Álvarez",phone:"601-234-5678",city:"Bogotá",notes:""},
-    {id:"sup2",name:"Calzado Norte",contact:"Ana Ríos",phone:"574-987-6543",city:"Medellín",notes:""},
-    {id:"sup3",name:"Importadora XYZ",contact:"Luis Castro",phone:"572-456-7890",city:"Cali",notes:""},
-  ],
-  purchases:[
-    {id:"b1",date:"2025-06-02",supplier:"Textiles S.A.",product:"Camisetas x50",qty:50,unit_cost:28000,pay_method:"crédito",notes:"30 días"},
-    {id:"b2",date:"2025-06-01",supplier:"Calzado Norte",product:"Zapatos x20",qty:20,unit_cost:85000,pay_method:"transferencia",notes:""},
-  ],
-  cashflow:[
-    {id:"cf1",date:"2025-06-09",type:"ingreso",description:"Venta camisetas",amount:165000,method:"efectivo"},
-    {id:"cf2",date:"2025-06-09",type:"egreso",description:"Arriendo local",amount:800000,method:"transferencia"},
-    {id:"cf3",date:"2025-06-08",type:"ingreso",description:"Abono cliente",amount:80000,method:"nequi"},
-    {id:"cf4",date:"2025-06-07",type:"ingreso",description:"Venta zapatos",amount:160000,method:"efectivo"},
-  ],
-};
+function exportCSV(headers, rows, filename){
+  const all=[headers,...rows];
+  const csv=all.map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(";")).join("\n");
+  const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+}
 
-// ─── API layer (Supabase real o Demo local) ───────────────────────────────────
+// ─── API ──────────────────────────────────────────────────────────────────
 const api = {
-  // AUTH
+  async session(){
+    const {data}=await sb.auth.getSession();
+    if(!data?.session) return null;
+    UID=data.session.user.id;
+    const {data:p}=await sb.from("profiles").select("*").eq("id",UID).maybeSingle();
+    return {...data.session.user,...(p||{})};
+  },
   async login(email,pass){
-    if(DEMO_MODE){
-      if(email==="admin@libro.co"&&pass==="admin123") return {id:"u1",name:"Administrador",role:"admin",business:"Mi Tienda"};
-      if(email==="demo@libro.co"&&pass==="demo123") return {id:"u2",name:"Empleado",role:"employee",business:"Mi Tienda"};
-      throw new Error("Credenciales incorrectas");
-    }
     const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
     if(error) throw error;
-    const {data:profile}=await sb.from("profiles").select("*").eq("id",data.user.id).single();
-    return {...data.user,...profile};
+    UID=data.user.id;
+    const {data:p}=await sb.from("profiles").select("*").eq("id",UID).maybeSingle();
+    return {...data.user,...(p||{})};
   },
-  async logout(){
-    if(!DEMO_MODE) await sb.auth.signOut();
-  },
+  async logout(){ await sb.auth.signOut(); UID=null; },
 
-  // CLIENTES
-  async getClients(){
-    if(DEMO_MODE) return DEMO.clients;
-    const {data,error}=await sb.from("client_balance").select("*").order("name");
-    if(error) throw error; return data||[];
-  },
-  async addClient(c){
-    if(DEMO_MODE) return {...c,id:"c"+Date.now(),total_bought:0,balance:0,last_purchase:"—"};
-    const {data,error}=await sb.from("clients").insert(c).select().single();
-    if(error) throw error; return data;
-  },
-  async updateClient(id,c){
-    if(DEMO_MODE) return {...c,id};
-    const {data,error}=await sb.from("clients").update(c).eq("id",id).select().single();
-    if(error) throw error; return data;
-  },
-  async deleteClient(id){
-    if(!DEMO_MODE){const {error}=await sb.from("clients").delete().eq("id",id);if(error)throw error;}
-  },
+  async getClients(){ const{data,error}=await sb.from("clients").select("*").order("name"); if(error)throw error; return data||[]; },
+  async addClient(c){ const{data,error}=await sb.from("clients").insert({...c,user_id:UID}).select().single(); if(error)throw error; return data; },
+  async updateClient(id,c){ const{data,error}=await sb.from("clients").update(c).eq("id",id).select().single(); if(error)throw error; return data; },
 
-  // PRODUCTOS
-  async getProducts(){
-    if(DEMO_MODE) return DEMO.products;
-    const {data,error}=await sb.from("products").select("*").order("name");
-    if(error) throw error; return data||[];
-  },
-  async addProduct(p){
-    if(DEMO_MODE) return {...p,id:"p"+Date.now()};
-    const {data,error}=await sb.from("products").insert(p).select().single();
-    if(error) throw error; return data;
-  },
-  async updateProduct(id,p){
-    if(DEMO_MODE) return {...p,id};
-    const {data,error}=await sb.from("products").update(p).eq("id",id).select().single();
-    if(error) throw error; return data;
-  },
-  async adjustStock(id,delta,currentStock){
-    const newStock=Math.max(0,currentStock+delta);
-    if(DEMO_MODE) return newStock;
-    const {error}=await sb.from("products").update({stock:newStock}).eq("id",id);
-    if(error) throw error; return newStock;
-  },
+  async getSuppliers(){ const{data,error}=await sb.from("suppliers").select("*").order("name"); if(error)throw error; return data||[]; },
+  async addSupplier(s){ const{data,error}=await sb.from("suppliers").insert({...s,user_id:UID}).select().single(); if(error)throw error; return data; },
 
-  // VENTAS
-  async getSales(){
-    if(DEMO_MODE) return DEMO.sales;
-    const {data,error}=await sb.from("sales").select("*").order("date",{ascending:false});
-    if(error) throw error; return data||[];
-  },
-  async addSale(s){
-    if(DEMO_MODE) return {...s,id:"s"+Date.now()};
-    const {data,error}=await sb.from("sales").insert(s).select().single();
-    if(error) throw error; return data;
-  },
-  async deleteSale(id){
-    if(!DEMO_MODE){const{error}=await sb.from("sales").delete().eq("id",id);if(error)throw error;}
-  },
-  async addPayment(saleId,amount,method,currentPaid,saleTotal){
-    const newPaid=(currentPaid||0)+amount;
-    const status=newPaid>=saleTotal?"paid":"partial";
-    if(DEMO_MODE) return {paid:newPaid,status};
-    await sb.from("payments").insert({sale_id:saleId,amount,method});
-    await sb.from("sales").update({paid:newPaid,status}).eq("id",saleId);
-    return {paid:newPaid,status};
-  },
+  async getInventory(){ const{data,error}=await sb.from("crypto_inventory_view").select("*"); if(error)throw error; return data||[]; },
+  async getKardex(){ const{data,error}=await sb.from("crypto_kardex").select("*").order("created_at",{ascending:false}); if(error)throw error; return data||[]; },
 
-  // COMPRAS
-  async getPurchases(){
-    if(DEMO_MODE) return DEMO.purchases;
-    const {data,error}=await sb.from("purchases").select("*").order("date",{ascending:false});
-    if(error) throw error; return data||[];
-  },
+  async getPurchases(){ const{data,error}=await sb.from("crypto_purchases").select("*").order("date",{ascending:false}).order("created_at",{ascending:false}); if(error)throw error; return data||[]; },
   async addPurchase(p){
-    if(DEMO_MODE) return {...p,id:"b"+Date.now()};
-    const {data,error}=await sb.from("purchases").insert(p).select().single();
-    if(error) throw error; return data;
+    const total=+p.quantity*+p.unit_cost;
+    const{data,error}=await sb.from("crypto_purchases").insert({
+      user_id:UID,date:p.date,symbol:p.symbol,quantity:+p.quantity,
+      unit_cost:+p.unit_cost,total,currency:"COP",
+      supplier:(p.supplier||"").trim(),pay_method:p.pay_method,notes:p.notes
+    }).select().single();
+    if(error)throw error;
+    const{error:e2}=await sb.rpc("process_crypto_purchase",{
+      p_id:data.id,p_user_id:UID,p_date:data.date,p_symbol:data.symbol,
+      p_quantity:data.quantity,p_cost:data.unit_cost,p_total:data.total
+    });
+    if(e2)throw e2;
+    await sb.from("cash_flow").insert({
+      user_id:UID,date:p.date,type:"egreso",
+      description:`Compra ${fmtQ(p.quantity,p.symbol)} ${p.symbol} @ ${fmt(+p.unit_cost)}`,
+      amount:total,method:p.pay_method||"transferencia",notes:`Proveedor: ${p.supplier||"—"}`
+    });
+    return data;
   },
 
-  // GASTOS
-  async getExpenses(){
-    if(DEMO_MODE) return DEMO.expenses;
-    const {data,error}=await sb.from("expenses").select("*").order("date",{ascending:false});
-    if(error) throw error; return data||[];
-  },
-  async addExpense(e){
-    if(DEMO_MODE) return {...e,id:"ex"+Date.now()};
-    const {data,error}=await sb.from("expenses").insert(e).select().single();
-    if(error) throw error; return data;
-  },
-  async deleteExpense(id){
-    if(!DEMO_MODE){const{error}=await sb.from("expenses").delete().eq("id",id);if(error)throw error;}
-  },
-
-  // PROVEEDORES
-  async getSuppliers(){
-    if(DEMO_MODE) return DEMO.suppliers;
-    const {data,error}=await sb.from("suppliers").select("*").order("name");
-    if(error) throw error; return data||[];
-  },
-  async addSupplier(s){
-    if(DEMO_MODE) return {...s,id:"sup"+Date.now()};
-    const {data,error}=await sb.from("suppliers").insert(s).select().single();
-    if(error) throw error; return data;
+  async getSales(){ const{data,error}=await sb.from("crypto_sales").select("*").order("date",{ascending:false}).order("created_at",{ascending:false}); if(error)throw error; return data||[]; },
+  async addSale(s){
+    const total=+s.quantity*+s.unit_price;
+    const{data,error}=await sb.from("crypto_sales").insert({
+      user_id:UID,date:s.date,symbol:s.symbol,quantity:+s.quantity,
+      unit_price:+s.unit_price,total,avg_cost_used:0,cogs:0,gross_profit:0,
+      currency:"COP",client:(s.client||"").trim(),pay_method:s.pay_method,notes:s.notes
+    }).select().single();
+    if(error)throw error;
+    const{data:calc,error:e2}=await sb.rpc("process_crypto_sale",{
+      p_id:data.id,p_user_id:UID,p_date:data.date,p_symbol:data.symbol,
+      p_quantity:data.quantity,p_price:data.unit_price,p_total:data.total
+    });
+    if(e2)throw e2;
+    await sb.from("cash_flow").insert({
+      user_id:UID,date:s.date,type:"ingreso",
+      description:`Venta ${fmtQ(s.quantity,s.symbol)} ${s.symbol} @ ${fmt(+s.unit_price)}`,
+      amount:total,method:s.pay_method||"transferencia",notes:`Cliente: ${s.client||"—"}`
+    });
+    return {...data,...(calc?.[0]||{})};
   },
 
-  // FLUJO DE CAJA
-  async getCashFlow(){
-    if(DEMO_MODE) return DEMO.cashflow;
-    const {data,error}=await sb.from("cash_flow").select("*").order("date",{ascending:false});
-    if(error) throw error; return data||[];
-  },
-  async addCashFlow(e){
-    if(DEMO_MODE) return {...e,id:"cf"+Date.now()};
-    const {data,error}=await sb.from("cash_flow").insert(e).select().single();
-    if(error) throw error; return data;
-  },
-  async deleteCashFlow(id){
-    if(!DEMO_MODE){const{error}=await sb.from("cash_flow").delete().eq("id",id);if(error)throw error;}
+  async getCashFlow(){ const{data,error}=await sb.from("cash_flow").select("*").order("date",{ascending:false}).order("created_at",{ascending:false}); if(error)throw error; return data||[]; },
+  async addCashFlow(e){ const{data,error}=await sb.from("cash_flow").insert({...e,user_id:UID,amount:+e.amount}).select().single(); if(error)throw error; return data; },
+  async delCashFlow(id){ const{error}=await sb.from("cash_flow").delete().eq("id",id); if(error)throw error; },
+
+  async getExpenses(){ const{data,error}=await sb.from("expenses").select("*").order("date",{ascending:false}); if(error)throw error; return data||[]; },
+  async addExpense(e){ const{data,error}=await sb.from("expenses").insert({...e,user_id:UID,amount:+e.amount}).select().single(); if(error)throw error; return data; },
+  async delExpense(id){ const{error}=await sb.from("expenses").delete().eq("id",id); if(error)throw error; },
+
+  async getGoal(){ const{data}=await sb.from("goals").select("*").eq("month",monthKey()).maybeSingle(); return data; },
+  async saveGoal(g){
+    const{data,error}=await sb.from("goals").upsert({user_id:UID,month:monthKey(),...g},{onConflict:"user_id,month"}).select().single();
+    if(error)throw error; return data;
   },
 };
 
-// ─── UI Components ────────────────────────────────────────────────────────────
-
-function Sparkline({data,color=C.accent,h=40,w=100}){
-  if(!data||data.length<2) return null;
-  const min=Math.min(...data),max=Math.max(...data),range=max-min||1;
-  const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-min)/range)*(h-6)-3}`).join(" ");
-  const [lx,ly]=pts.split(" ").pop().split(",");
-  return React.createElement("svg",{width:w,height:h,viewBox:`0 0 ${w} ${h}`,style:{flexShrink:0}},
-    React.createElement("polyline",{fill:"none",stroke:color,strokeWidth:"2",strokeLinecap:"round",strokeLinejoin:"round",points:pts}),
-    React.createElement("circle",{cx:lx,cy:ly,r:"3",fill:color})
-  );
+// ─── UI Primitives ────────────────────────────────────────────────────────
+function Spark({data,color=C.accent,h=38,w=90}){
+  if(!data||data.length<2)return null;
+  const min=Math.min(...data),max=Math.max(...data),r=max-min||1;
+  const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-min)/r)*(h-6)-3}`).join(" ");
+  const[lx,ly]=pts.split(" ").pop().split(",");
+  return <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{flexShrink:0}}>
+    <polyline fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={pts}/>
+    <circle cx={lx} cy={ly} r="3" fill={color}/>
+  </svg>;
 }
 
-function MiniBar({series,labels,colors,h=100}){
-  const max=Math.max(...series.flat(),1);
-  return React.createElement("div",{style:{display:"flex",alignItems:"flex-end",gap:4,height:h}},
-    series[0].map((_,i)=>
-      React.createElement("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}},
-        React.createElement("div",{style:{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:h-18}},
-          series.map((s,si)=>
-            React.createElement("div",{key:si,style:{flex:1,background:colors[si],borderRadius:"3px 3px 0 0",height:`${(s[i]/max)*100}%`,minHeight:2,transition:"height .4s"}})
-          )
-        ),
-        React.createElement("span",{style:{fontSize:9,color:C.muted}},labels[i])
-      )
-    )
-  );
+function Bars({data,labels,color=C.accent,h=90}){
+  const max=Math.max(...data,1);
+  return <div style={{display:"flex",alignItems:"flex-end",gap:4,height:h}}>
+    {data.map((v,i)=>(
+      <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+        <div style={{width:"100%",background:color,borderRadius:"3px 3px 0 0",height:`${Math.max(2,(v/max)*(h-18))}px`,transition:"height .4s"}}/>
+        <span style={{fontSize:8,color:C.muted}}>{labels[i]}</span>
+      </div>
+    ))}
+  </div>;
 }
 
-function StatCard({label,value,sub,trend,spark,sparkColor,accent}){
-  const up=trend>0;
-  return React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"14px 18px",display:"flex",flexDirection:"column",gap:6}},
-    React.createElement("span",{style:{fontSize:10,color:C.muted,fontWeight:600,letterSpacing:.8,textTransform:"uppercase"}},label),
-    React.createElement("div",{style:{display:"flex",alignItems:"flex-end",justifyContent:"space-between"}},
-      React.createElement("span",{style:{fontSize:20,fontWeight:700,color:accent||C.text,fontFamily:"'JetBrains Mono',monospace"}},value),
-      spark&&React.createElement(Sparkline,{data:spark,color:sparkColor||C.accent,h:34,w:70})
-    ),
-    (sub||trend!==undefined)&&React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},
-      trend!==undefined&&React.createElement("span",{style:{fontSize:11,color:up?C.green:C.rose,fontWeight:600}},`${up?"▲":"▼"} ${Math.abs(trend)}%`),
-      sub&&React.createElement("span",{style:{fontSize:11,color:C.muted}},sub)
-    )
-  );
+function Stat({label,value,sub,accent,spark,sparkColor}){
+  return <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"13px 16px",display:"flex",flexDirection:"column",gap:5}}>
+    <span style={{fontSize:10,color:C.muted,fontWeight:600,letterSpacing:.8,textTransform:"uppercase"}}>{label}</span>
+    <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:8}}>
+      <span style={{fontSize:19,fontWeight:700,color:accent||C.text,fontFamily:"'JetBrains Mono',monospace",lineHeight:1.1}}>{value}</span>
+      {spark&&<Spark data={spark} color={sparkColor||C.accent}/>}
+    </div>
+    {sub&&<span style={{fontSize:11,color:C.muted}}>{sub}</span>}
+  </div>;
 }
 
-function Badge({status}){
-  const m={paid:{l:"Pagado",bg:"#0D2B1D",c:C.green},pending:{l:"Pendiente",bg:"#2D1218",c:C.rose},partial:{l:"Abonado",bg:"#2D2100",c:C.amber}};
-  const s=m[status]||m.pending;
-  return React.createElement("span",{style:{padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:s.bg,color:s.c,whiteSpace:"nowrap"}},s.l);
-}
-
-function Inp({label,value,onChange,type="text",placeholder=""}){
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:4}},
-    label&&React.createElement("label",{style:{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}},label),
-    React.createElement("input",{type,value,onChange:e=>onChange(e.target.value),placeholder,
-      style:{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",color:C.text,fontSize:14,outline:"none",width:"100%"}})
-  );
+function Inp({label,value,onChange,type="text",placeholder="",list}){
+  return <div style={{display:"flex",flexDirection:"column",gap:4}}>
+    {label&&<label style={{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>{label}</label>}
+    <input type={type} value={value} list={list} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+      style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",color:C.text,fontSize:14,outline:"none",width:"100%"}}/>
+  </div>;
 }
 
 function Sel({label,value,onChange,options}){
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:4}},
-    label&&React.createElement("label",{style:{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}},label),
-    React.createElement("select",{value,onChange:e=>onChange(e.target.value),
-      style:{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",color:C.text,fontSize:14,outline:"none",width:"100%"}},
-      options.map(o=>React.createElement("option",{key:o.value,value:o.value},o.label))
-    )
-  );
+  return <div style={{display:"flex",flexDirection:"column",gap:4}}>
+    {label&&<label style={{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>{label}</label>}
+    <select value={value} onChange={e=>onChange(e.target.value)}
+      style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",color:C.text,fontSize:14,outline:"none",width:"100%"}}>
+      {options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  </div>;
 }
 
 function Btn({children,onClick,variant="primary",danger,disabled,full,small}){
   const bg=danger?C.rose:variant==="ghost"?"transparent":variant==="secondary"?C.card2:C.accent;
   const bc=danger?C.rose:variant==="ghost"?C.border:variant==="secondary"?C.border:C.accent;
-  return React.createElement("button",{onClick,disabled,
-    style:{background:bg,color:C.white,border:`1px solid ${bc}`,borderRadius:8,
-      padding:small?"6px 14px":"9px 18px",fontSize:small?12:14,fontWeight:600,
-      cursor:disabled?"not-allowed":"pointer",whiteSpace:"nowrap",width:full?"100%":undefined,opacity:disabled?.5:1}},
-    children
-  );
+  return <button onClick={onClick} disabled={disabled}
+    style={{background:bg,color:C.white,border:`1px solid ${bc}`,borderRadius:8,padding:small?"6px 13px":"9px 18px",fontSize:small?12:14,fontWeight:600,cursor:disabled?"not-allowed":"pointer",whiteSpace:"nowrap",width:full?"100%":undefined,opacity:disabled?.5:1}}>
+    {children}
+  </button>;
 }
 
 function Modal({title,children,onClose,wide}){
-  return React.createElement("div",{
-    style:{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:12},
-    onClick:e=>e.target===e.currentTarget&&onClose()},
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:22,width:"100%",maxWidth:wide?660:480,maxHeight:"90vh",overflowY:"auto"}},
-      React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}},
-        React.createElement("h3",{style:{margin:0,color:C.text,fontSize:16,fontWeight:700}},title),
-        React.createElement("button",{onClick:onClose,style:{background:"none",border:"none",color:C.muted,fontSize:22,cursor:"pointer"}},"\u2715")
-      ),
-      children
-    )
-  );
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:12}}
+    onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:22,width:"100%",maxWidth:wide?760:480,maxHeight:"92vh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h3 style={{margin:0,color:C.text,fontSize:16,fontWeight:700}}>{title}</h3>
+        <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,fontSize:22,cursor:"pointer"}}>✕</button>
+      </div>
+      {children}
+    </div>
+  </div>;
 }
 
-function SectionHeader({title,sub,action,onAction}){
-  return React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}},
-    React.createElement("div",null,
-      React.createElement("h2",{style:{margin:0,fontSize:19,fontWeight:700,color:C.text}},title),
-      sub&&React.createElement("p",{style:{margin:"2px 0 0",fontSize:12,color:C.muted}},sub)
-    ),
-    action&&React.createElement(Btn,{onClick:onAction},`+ ${action}`)
-  );
+function Head({title,sub,action,onAction}){
+  return <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:10,flexWrap:"wrap"}}>
+    <div>
+      <h2 style={{margin:0,fontSize:19,fontWeight:700,color:C.text}}>{title}</h2>
+      {sub&&<p style={{margin:"2px 0 0",fontSize:12,color:C.muted}}>{sub}</p>}
+    </div>
+    {action&&<Btn onClick={onAction}>+ {action}</Btn>}
+  </div>;
 }
 
-function SearchBar({value,onChange,placeholder="Buscar..."}){
-  return React.createElement("div",{style:{position:"relative",flex:1,minWidth:160}},
-    React.createElement("span",{style:{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:C.muted,fontSize:13,pointerEvents:"none"}},"🔍"),
-    React.createElement("input",{value,onChange:e=>onChange(e.target.value),placeholder,
-      style:{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px 9px 34px",color:C.text,fontSize:14,outline:"none",width:"100%",boxSizing:"border-box"}})
-  );
+function Search({value,onChange,placeholder="Buscar..."}){
+  return <div style={{position:"relative",flex:1,minWidth:160}}>
+    <span style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:C.muted,fontSize:13,pointerEvents:"none"}}>🔍</span>
+    <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+      style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px 9px 34px",color:C.text,fontSize:14,outline:"none",width:"100%"}}/>
+  </div>;
 }
 
-function FilterPill({label,active,onClick}){
-  return React.createElement("button",{onClick,
-    style:{padding:"7px 13px",borderRadius:8,fontSize:12,fontWeight:600,border:`1px solid ${active?C.accent:C.border}`,background:active?`${C.accent}22`:"transparent",color:active?C.accentL:C.muted,cursor:"pointer",whiteSpace:"nowrap"}},
-    label
-  );
+function Pill({label,active,onClick}){
+  return <button onClick={onClick} style={{padding:"7px 13px",borderRadius:8,fontSize:12,fontWeight:600,border:`1px solid ${active?C.accent:C.border}`,background:active?`${C.accent}22`:"transparent",color:active?C.accentL:C.muted,cursor:"pointer",whiteSpace:"nowrap"}}>
+    {label}
+  </button>;
 }
 
-function Table({cols,rows,onRowClick,emptyMsg="Sin registros"}){
-  return React.createElement("div",{style:{overflowX:"auto",borderRadius:10,border:`1px solid ${C.border}`}},
-    React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:13}},
-      React.createElement("thead",null,
-        React.createElement("tr",{style:{background:C.panel}},
-          cols.map(c=>React.createElement("th",{key:c.key,style:{padding:"10px 14px",textAlign:"left",color:C.muted,fontWeight:600,fontSize:10,letterSpacing:.8,borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap",textTransform:"uppercase"}},c.label))
-        )
-      ),
-      React.createElement("tbody",null,
-        rows.length===0&&React.createElement("tr",null,
-          React.createElement("td",{colSpan:cols.length,style:{padding:36,textAlign:"center",color:C.muted}},emptyMsg)
-        ),
-        rows.map((row,ri)=>React.createElement("tr",{key:row.id||ri,
-          onClick:()=>onRowClick&&onRowClick(row),
-          style:{borderBottom:`1px solid ${C.border}`,cursor:onRowClick?"pointer":"default"},
-          onMouseEnter:e=>e.currentTarget.style.background=C.panel,
-          onMouseLeave:e=>e.currentTarget.style.background="transparent"},
-          cols.map(c=>React.createElement("td",{key:c.key,style:{padding:"10px 14px",color:C.text,whiteSpace:"nowrap"}},
-            c.render?c.render(row[c.key],row):row[c.key]??"—"
-          ))
-        ))
-      )
-    )
-  );
+function Tabla({cols,rows,onRowClick,emptyMsg="Sin registros"}){
+  return <div style={{overflowX:"auto",borderRadius:10,border:`1px solid ${C.border}`}}>
+    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+      <thead><tr style={{background:C.panel}}>
+        {cols.map(c=><th key={c.key} style={{padding:"9px 13px",textAlign:"left",color:C.muted,fontWeight:600,fontSize:10,letterSpacing:.8,borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap",textTransform:"uppercase"}}>{c.label}</th>)}
+      </tr></thead>
+      <tbody>
+        {rows.length===0&&<tr><td colSpan={cols.length} style={{padding:32,textAlign:"center",color:C.muted}}>{emptyMsg}</td></tr>}
+        {rows.map((row,ri)=>(
+          <tr key={row.id||ri} onClick={()=>onRowClick&&onRowClick(row)}
+            style={{borderBottom:`1px solid ${C.border}`,cursor:onRowClick?"pointer":"default"}}
+            onMouseEnter={e=>e.currentTarget.style.background=C.panel}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            {cols.map(c=><td key={c.key} style={{padding:"9px 13px",color:C.text,whiteSpace:"nowrap"}}>{c.render?c.render(row[c.key],row):(row[c.key]??"—")}</td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>;
 }
 
 function Toast({msg,type,onDone}){
-  useEffect(()=>{const t=setTimeout(onDone,3000);return()=>clearTimeout(t);},[]);
-  return React.createElement("div",{style:{position:"fixed",bottom:24,right:16,background:C.card,border:`1px solid ${type==="error"?C.rose:C.green}`,borderRadius:10,padding:"12px 18px",zIndex:999,color:C.text,fontSize:13,fontWeight:500,boxShadow:"0 8px 32px rgba(0,0,0,.4)",display:"flex",gap:10,alignItems:"center"}},
-    React.createElement("span",{style:{color:type==="error"?C.rose:C.green}},type==="error"?"✕":"✓"),
-    msg
-  );
+  useEffect(()=>{const t=setTimeout(onDone,3200);return()=>clearTimeout(t);},[]);
+  return <div style={{position:"fixed",bottom:24,right:16,left:16,maxWidth:420,marginLeft:"auto",background:C.card,border:`1px solid ${type==="error"?C.rose:C.green}`,borderRadius:10,padding:"12px 16px",zIndex:999,color:C.text,fontSize:13,fontWeight:500,boxShadow:"0 8px 32px rgba(0,0,0,.5)",display:"flex",gap:10,alignItems:"center"}}>
+    <span style={{color:type==="error"?C.rose:C.green}}>{type==="error"?"✕":"✓"}</span>{msg}
+  </div>;
 }
 
 function useToast(){
-  const [toasts,setToasts]=useState([]);
-  const show=(msg,type="success")=>setToasts(t=>[...t,{id:Date.now(),msg,type}]);
-  const remove=id=>setToasts(t=>t.filter(x=>x.id!==id));
-  return {toasts,show,remove};
+  const[toasts,setToasts]=useState([]);
+  const show=(msg,type="success")=>setToasts(t=>[...t,{id:Date.now()+Math.random(),msg,type}]);
+  return {toasts,show,remove:id=>setToasts(t=>t.filter(x=>x.id!==id))};
 }
 
-// ─── Datos mock para gráficos ─────────────────────────────────────────────────
-const MLS=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-const MS=[420,580,510,670,720,880,650,900,780,950,820,1100].map(v=>v*1000);
-const ME=[280,320,290,380,350,420,380,480,410,520,440,580].map(v=>v*1000);
+function PeriodBar({period,setPeriod,from,setFrom,to,setTo}){
+  return <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+    {[["today","Hoy"],["week","Semana"],["month","Mes"],["year","Año"],["all","Todo"],["custom","Rango"]].map(([v,l])=>
+      <Pill key={v} label={l} active={period===v} onClick={()=>setPeriod(v)}/>
+    )}
+    {period==="custom"&&<>
+      <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 10px",color:C.text,fontSize:12}}/>
+      <span style={{color:C.muted,fontSize:12}}>→</span>
+      <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 10px",color:C.text,fontSize:12}}/>
+    </>}
+  </div>;
+}
 
-// ─── MÓDULO: LOGIN ────────────────────────────────────────────────────────────
+// ─── LOGIN ────────────────────────────────────────────────────────────────
 function Login({onLogin}){
-  const [email,setEmail]=useState("");
-  const [pass,setPass]=useState("");
-  const [err,setErr]=useState("");
-  const [loading,setLoading]=useState(false);
+  const[email,setEmail]=useState("");
+  const[pass,setPass]=useState("");
+  const[err,setErr]=useState("");
+  const[loading,setLoading]=useState(false);
 
   const submit=async()=>{
     setErr("");setLoading(true);
-    try{ const u=await api.login(email,pass); onLogin(u); }
-    catch(e){ setErr(e.message||"Error al ingresar"); }
+    try{ onLogin(await api.login(email,pass)); }
+    catch(e){ setErr(e.message==="Invalid login credentials"?"Credenciales incorrectas":e.message); }
     finally{ setLoading(false); }
   };
 
-  return React.createElement("div",{style:{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,padding:36,width:"100%",maxWidth:400}},
-      React.createElement("div",{style:{textAlign:"center",marginBottom:28}},
-        React.createElement("div",{style:{fontSize:44,marginBottom:8}},"📒"),
-        React.createElement("h1",{style:{margin:0,fontSize:24,fontWeight:800,color:C.text}},"Libro Empresarial"),
-        React.createElement("p",{style:{margin:"6px 0 0",fontSize:13,color:C.muted}},"Control total de tu negocio"),
-        DEMO_MODE&&React.createElement("div",{style:{marginTop:10,padding:"6px 12px",background:"#1A1200",border:`1px solid ${C.amber}`,borderRadius:8,display:"inline-block"}},
-          React.createElement("span",{style:{fontSize:11,color:C.amber}},"⚠️ Modo Demo — configura Supabase para datos reales")
-        )
-      ),
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement(Inp,{label:"Correo electrónico",value:email,onChange:setEmail,placeholder:"admin@libro.co"}),
-        React.createElement(Inp,{label:"Contraseña",type:"password",value:pass,onChange:setPass,placeholder:"••••••••"}),
-        err&&React.createElement("p",{style:{margin:0,fontSize:13,color:C.rose,background:"#2D1218",padding:"8px 12px",borderRadius:6}},err),
-        React.createElement(Btn,{onClick:submit,disabled:loading,full:true},loading?"Ingresando...":"Ingresar")
-      ),
-      React.createElement("div",{style:{marginTop:16,padding:12,background:C.panel,borderRadius:8}},
-        React.createElement("p",{style:{margin:0,fontSize:12,color:C.muted,lineHeight:1.8}},
-          React.createElement("b",{style:{color:C.text}},"Admin: "),"admin@libro.co / admin123",
-          React.createElement("br",null),
-          React.createElement("b",{style:{color:C.text}},"Demo: "),"demo@libro.co / demo123"
-        )
-      )
-    )
-  );
+  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,padding:36,width:"100%",maxWidth:400}}>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontSize:44,marginBottom:8}}>₿</div>
+        <h1 style={{margin:0,fontSize:23,fontWeight:800,color:C.text}}>Casa de Cambio Digital</h1>
+        <p style={{margin:"6px 0 0",fontSize:13,color:C.muted}}>Gestión profesional de criptomonedas</p>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <Inp label="Correo" value={email} onChange={setEmail} placeholder="tu@correo.com"/>
+        <Inp label="Contraseña" type="password" value={pass} onChange={setPass} placeholder="••••••••"/>
+        {err&&<p style={{margin:0,fontSize:13,color:C.rose,background:"#2D1218",padding:"8px 12px",borderRadius:6}}>{err}</p>}
+        <Btn onClick={submit} disabled={loading} full>{loading?"Ingresando...":"Ingresar"}</Btn>
+      </div>
+    </div>
+  </div>;
 }
 
-// ─── MÓDULO: DASHBOARD ────────────────────────────────────────────────────────
-function Dashboard({sales,expenses,clients,products}){
-  const todaySales=sales.filter(s=>s.date===today()).reduce((a,s)=>a+s.price*s.qty,0);
-  const monthSales=sales.reduce((a,s)=>a+s.price*s.qty,0);
-  const monthCosts=sales.reduce((a,s)=>a+s.cost*s.qty,0);
-  const monthExp=expenses.reduce((a,e)=>a+e.amount,0);
-  const netProfit=monthSales-monthCosts-monthExp;
-  const receivable=sales.filter(s=>s.status!=="paid").reduce((a,s)=>a+(s.price*s.qty-(s.paid||0)),0);
-  const lowStock=products.filter(p=>p.stock<=p.min_stock);
-  const topProds=Object.values(sales.reduce((acc,s)=>{
-    if(!acc[s.product])acc[s.product]={name:s.product,qty:0};
-    acc[s.product].qty+=s.qty; return acc;
-  },{})).sort((a,b)=>b.qty-a.qty).slice(0,5);
+// ─── DASHBOARD ────────────────────────────────────────────────────────────
+function Dashboard({inventory,sales,purchases,cashflow,expenses,clients,goal,onSaveGoal,toast}){
+  const[goalModal,setGoalModal]=useState(false);
+  const[gForm,setGForm]=useState({profit_goal:goal?.profit_goal||"",sales_goal:goal?.sales_goal||"",clients_goal:goal?.clients_goal||""});
 
-  const goalPct=(v,g)=>Math.min(100,Math.round((v/g)*100));
+  const capital=cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0);
+  const usdtInv=inventory.find(i=>i.symbol==="USDT");
+  const totalInvested=inventory.reduce((a,i)=>a+(+i.total_invested||0),0);
 
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:18}},
-    // KPIs
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(148px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Ventas Hoy",value:fmtK(todaySales),trend:12,spark:MS.slice(-7),sparkColor:C.green,accent:C.green}),
-      React.createElement(StatCard,{label:"Ventas Mes",value:fmtK(monthSales),trend:8,spark:MS,sparkColor:C.accent}),
-      React.createElement(StatCard,{label:"Gastos Mes",value:fmtK(monthExp),trend:-3,spark:ME,sparkColor:C.rose,accent:C.rose}),
-      React.createElement(StatCard,{label:"Ganancia Neta",value:fmtK(netProfit),trend:15,spark:MS.map((v,i)=>v-ME[i]),sparkColor:C.green,accent:C.green}),
-      React.createElement(StatCard,{label:"Por Cobrar",value:fmtK(receivable),sub:"cartera activa",accent:C.amber}),
-      React.createElement(StatCard,{label:"Clientes",value:clients.length,sub:"+2 este mes"})
-    ),
+  const todayP=purchases.filter(p=>p.date===today());
+  const todayS=sales.filter(s=>s.date===today());
+  const monthS=sales.filter(s=>s.date.slice(0,7)===monthKey());
+  const monthP=purchases.filter(p=>p.date.slice(0,7)===monthKey());
+  const prevMonth=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7);})();
+  const prevMonthVol=sales.filter(s=>s.date.slice(0,7)===prevMonth).reduce((a,s)=>a+s.total,0);
 
-    // Charts row
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14}},
-      // Ventas vs Gastos
-      React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-        React.createElement("h4",{style:{margin:"0 0 4px",color:C.text,fontSize:14,fontWeight:600}},"Ventas vs Gastos"),
-        React.createElement("p",{style:{margin:"0 0 14px",fontSize:11,color:C.muted}},"Últimos 12 meses"),
-        React.createElement(MiniBar,{series:[MS.map(v=>v/1000),ME.map(v=>v/1000)],labels:MLS,colors:[C.accent,C.rose],h:110}),
-        React.createElement("div",{style:{display:"flex",gap:14,marginTop:8}},
-          [[C.accent,"Ventas"],[C.rose,"Gastos"]].map(([col,lbl])=>
-            React.createElement("span",{key:lbl,style:{fontSize:10,color:C.muted,display:"flex",gap:4,alignItems:"center"}},
-              React.createElement("span",{style:{width:9,height:9,borderRadius:2,background:col,display:"inline-block"}}),lbl
-            )
-          )
-        )
-      ),
-      // Cash flow
-      React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-        React.createElement("h4",{style:{margin:"0 0 4px",color:C.text,fontSize:14,fontWeight:600}},"Flujo de Caja"),
-        React.createElement("p",{style:{margin:"0 0 14px",fontSize:11,color:C.muted}},"Ganancia acumulada"),
-        React.createElement(Sparkline,{data:MS.map((v,i)=>v-ME[i]),color:C.green,h:80,w:230})
-      ),
-      // Top productos
-      React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-        React.createElement("h4",{style:{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}},"Top Productos"),
-        topProds.map((p,i)=>React.createElement("div",{key:i,style:{display:"flex",alignItems:"center",gap:8,marginBottom:10}},
-          React.createElement("span",{style:{fontSize:10,color:C.muted,width:13,textAlign:"right"}},i+1),
-          React.createElement("div",{style:{flex:1}},
-            React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:3}},
-              React.createElement("span",{style:{fontSize:12,color:C.text}},p.name),
-              React.createElement("span",{style:{fontSize:10,color:C.muted}},`${p.qty} uds`)
-            ),
-            React.createElement("div",{style:{height:3,background:C.border,borderRadius:2}},
-              React.createElement("div",{style:{height:"100%",background:C.accent,borderRadius:2,width:`${(p.qty/topProds[0].qty)*100}%`}})
-            )
-          )
-        ))
-      )
-    ),
+  const dayProfit=todayS.reduce((a,s)=>a+(+s.gross_profit||0),0);
+  const monthProfit=monthS.reduce((a,s)=>a+(+s.gross_profit||0),0);
+  const monthVol=monthS.reduce((a,s)=>a+s.total,0)+monthP.reduce((a,p)=>a+p.total,0);
+  const monthExp=expenses.filter(e=>e.date.slice(0,7)===monthKey()).reduce((a,e)=>a+e.amount,0);
+  const netMonth=monthProfit-monthExp;
+  const growth=prevMonthVol>0?Math.round(((monthS.reduce((a,s)=>a+s.total,0)-prevMonthVol)/prevMonthVol)*100):null;
+  const margin=monthS.reduce((a,s)=>a+s.total,0)>0?((monthProfit/monthS.reduce((a,s)=>a+s.total,0))*100).toFixed(1):0;
 
-    // Metas
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-      React.createElement("h4",{style:{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}},"Metas del Mes"),
-      [
-        {label:"Ventas",current:monthSales,goal:5000000,color:C.accent},
-        {label:"Ganancia",current:netProfit,goal:1500000,color:C.green},
-        {label:"Clientes",current:clients.length,goal:20,color:C.amber},
+  // Últimos 14 días — utilidad y volumen
+  const last14=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-(13-i));return d.toISOString().split("T")[0];});
+  const profitSeries=last14.map(d=>sales.filter(s=>s.date===d).reduce((a,s)=>a+(+s.gross_profit||0),0));
+  const volSeries=last14.map(d=>sales.filter(s=>s.date===d).reduce((a,s)=>a+s.total,0)/1000);
+  const dayLabels=last14.map(d=>d.slice(8));
+
+  // Top clientes por utilidad
+  const byClient={};
+  sales.forEach(s=>{const k=norm(s.client)||"(sin nombre)";if(!byClient[k])byClient[k]={name:s.client||"(sin nombre)",profit:0,vol:0,ops:0};byClient[k].profit+=(+s.gross_profit||0);byClient[k].vol+=s.total;byClient[k].ops++;});
+  const topClients=Object.values(byClient).sort((a,b)=>b.profit-a.profit).slice(0,5);
+
+  const saveGoal=async()=>{
+    try{
+      await onSaveGoal({profit_goal:+gForm.profit_goal||0,sales_goal:+gForm.sales_goal||0,clients_goal:+gForm.clients_goal||0});
+      setGoalModal(false);toast("Metas guardadas");
+    }catch(e){toast(e.message,"error");}
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:16}}>
+    {/* KPI principal */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+      <Stat label="Capital Disponible" value={fmtK(capital)} accent={capital>=0?C.accentL:C.rose} sub="flujo de caja"/>
+      <Stat label="Inventario USDT" value={fmtQ(usdtInv?.quantity||0,"USDT")} accent={COIN_C.USDT} sub={usdtInv?`CPP ${fmt(usdtInv.avg_cost)}`:"sin posición"}/>
+      <Stat label="Valor Inventario" value={fmtK(totalInvested)} accent={C.amber} sub="costo total COP"/>
+      <Stat label="Utilidad Hoy" value={fmtK(dayProfit)} accent={dayProfit>=0?C.green:C.rose} sub={`${todayS.length} ventas · ${todayP.length} compras`}/>
+      <Stat label="Utilidad Mes" value={fmtK(monthProfit)} accent={C.green} spark={profitSeries} sparkColor={C.green}/>
+      <Stat label="Utilidad Neta Mes" value={fmtK(netMonth)} accent={netMonth>=0?C.green:C.rose} sub={`gastos: ${fmtK(monthExp)}`}/>
+    </div>
+
+    {/* Indicadores */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+      <Stat label="Volumen Mes" value={fmtK(monthVol)} accent={C.blue} sub={`${monthS.length+monthP.length} operaciones`}/>
+      <Stat label="Margen" value={`${margin}%`} accent={+margin>2?C.green:+margin>1?C.amber:C.rose} sub="utilidad / ventas"/>
+      <Stat label="Crecimiento" value={growth===null?"—":`${growth>0?"+":""}${growth}%`} accent={growth>=0?C.green:C.rose} sub="vs mes anterior"/>
+      <Stat label="Clientes" value={clients.length} sub={`${Object.keys(byClient).length} activos`}/>
+    </div>
+
+    {/* Gráficas */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14}}>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
+        <h4 style={{margin:"0 0 4px",color:C.text,fontSize:14,fontWeight:600}}>Volumen de Ventas</h4>
+        <p style={{margin:"0 0 12px",fontSize:11,color:C.muted}}>Últimos 14 días (miles COP)</p>
+        {volSeries.some(v=>v>0)
+          ?<Bars data={volSeries} labels={dayLabels} color={C.accent} h={100}/>
+          :<p style={{color:C.muted,fontSize:13,padding:"20px 0",textAlign:"center"}}>Sin ventas en los últimos 14 días</p>}
+      </div>
+
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
+        <h4 style={{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}}>Top Clientes (utilidad)</h4>
+        {topClients.length===0&&<p style={{color:C.muted,fontSize:13}}>Sin operaciones registradas</p>}
+        {topClients.map((c,i)=>(
+          <div key={i} style={{marginBottom:11}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+              <span style={{fontSize:13,color:C.text}}>{i+1}. {c.name}</span>
+              <span style={{fontSize:12,color:C.green,fontWeight:600}}>{fmtK(c.profit)}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+              <div style={{flex:1,height:4,background:C.border,borderRadius:2}}>
+                <div style={{height:"100%",background:C.accent,borderRadius:2,width:`${topClients[0].profit>0?(c.profit/topClients[0].profit)*100:0}%`}}/>
+              </div>
+              <span style={{fontSize:10,color:C.muted}}>{c.ops} ops · {fmtK(c.vol)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Inventario por moneda */}
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
+      <h4 style={{margin:"0 0 12px",color:C.text,fontSize:14,fontWeight:600}}>Posición por Moneda</h4>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        {inventory.filter(i=>+i.quantity>0).length===0&&<p style={{color:C.muted,fontSize:13}}>Sin posiciones abiertas — registra tu primera compra</p>}
+        {inventory.filter(i=>+i.quantity>0).map(i=>(
+          <div key={i.symbol} style={{background:C.card2,border:`1px solid ${COIN_C[i.symbol]||C.border}`,borderRadius:10,padding:"11px 15px",minWidth:150}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:COIN_C[i.symbol]||C.accent}}/>
+              <b style={{color:C.text,fontSize:13,fontFamily:"monospace"}}>{i.symbol}</b>
+            </div>
+            <div style={{fontSize:16,fontWeight:700,color:COIN_C[i.symbol]||C.accent,fontFamily:"monospace"}}>{fmtQ(i.quantity,i.symbol)}</div>
+            <div style={{fontSize:10,color:C.muted,marginTop:2}}>CPP {fmt(i.avg_cost)}</div>
+            <div style={{fontSize:10,color:C.amber}}>{fmt(i.total_invested)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Metas */}
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h4 style={{margin:0,color:C.text,fontSize:14,fontWeight:600}}>Metas del Mes</h4>
+        <Btn small variant="secondary" onClick={()=>{setGForm({profit_goal:goal?.profit_goal||"",sales_goal:goal?.sales_goal||"",clients_goal:goal?.clients_goal||""});setGoalModal(true);}}>Editar</Btn>
+      </div>
+      {[
+        {label:"Utilidad",cur:monthProfit,target:+goal?.profit_goal||0,color:C.green,f:fmtK},
+        {label:"Volumen",cur:monthVol,target:+goal?.sales_goal||0,color:C.blue,f:fmtK},
+        {label:"Operaciones",cur:monthS.length+monthP.length,target:+goal?.clients_goal||0,color:C.amber,f:v=>v},
       ].map(m=>{
-        const pct=goalPct(m.current,m.goal);
-        return React.createElement("div",{key:m.label,style:{marginBottom:12}},
-          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:4}},
-            React.createElement("span",{style:{fontSize:13,color:C.text}},m.label),
-            React.createElement("span",{style:{fontSize:11,color:C.muted}},`${fmtK(m.current)} / ${fmtK(m.goal)} · `,React.createElement("b",{style:{color:m.color}},`${pct}%`))
-          ),
-          React.createElement("div",{style:{height:6,background:C.border,borderRadius:3}},
-            React.createElement("div",{style:{height:"100%",background:m.color,borderRadius:3,width:`${pct}%`,transition:"width .5s"}})
-          )
-        );
-      })
-    ),
+        const pct=m.target>0?Math.min(100,Math.round((m.cur/m.target)*100)):0;
+        return <div key={m.label} style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+            <span style={{fontSize:13,color:C.text}}>{m.label}</span>
+            <span style={{fontSize:11,color:C.muted}}>{m.f(m.cur)} / {m.target>0?m.f(m.target):"sin meta"} {m.target>0&&<b style={{color:m.color}}>· {pct}%</b>}</span>
+          </div>
+          <div style={{height:6,background:C.border,borderRadius:3}}>
+            <div style={{height:"100%",background:m.color,borderRadius:3,width:`${pct}%`,transition:"width .5s"}}/>
+          </div>
+        </div>;
+      })}
+    </div>
 
-    // Alertas stock
-    lowStock.length>0&&React.createElement("div",{style:{background:"#1A1200",border:`1px solid ${C.amber}`,borderRadius:12,padding:14}},
-      React.createElement("h4",{style:{margin:"0 0 8px",color:C.amber,fontSize:13}},`⚠️ Stock Bajo — ${lowStock.length} productos`),
-      React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-        lowStock.map(p=>React.createElement("span",{key:p.id,style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 10px",fontSize:11,color:C.text}},
-          `${p.name} — `,React.createElement("b",{style:{color:C.rose}},`${p.stock} uds`)
-        ))
-      )
-    )
-  );
+    {goalModal&&<Modal title="Metas del Mes" onClose={()=>setGoalModal(false)}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <Inp label="Meta de utilidad (COP)" type="number" value={gForm.profit_goal} onChange={v=>setGForm(f=>({...f,profit_goal:v}))} placeholder="Ej: 5000000"/>
+        <Inp label="Meta de volumen (COP)" type="number" value={gForm.sales_goal} onChange={v=>setGForm(f=>({...f,sales_goal:v}))} placeholder="Ej: 200000000"/>
+        <Inp label="Meta de operaciones" type="number" value={gForm.clients_goal} onChange={v=>setGForm(f=>({...f,clients_goal:v}))} placeholder="Ej: 100"/>
+        <Btn onClick={saveGoal} full>Guardar Metas</Btn>
+      </div>
+    </Modal>}
+  </div>;
 }
 
-// ─── MÓDULO: VENTAS ───────────────────────────────────────────────────────────
-function SalesModule({sales,setSales,toast}){
-  const [search,setSearch]=useState("");
-  const [filter,setFilter]=useState("all");
-  const [modal,setModal]=useState(false);
-  const [payMod,setPayMod]=useState(null);
-  const [detail,setDetail]=useState(null);
-  const [saving,setSaving]=useState(false);
-  const emptyForm={date:today(),client_name:"",product:"",qty:"1",cost:"0",price:"0",status:"pending",notes:"",paid:"0"};
-  const [form,setForm]=useState(emptyForm);
+// ─── COMPRAS CRYPTO ───────────────────────────────────────────────────────
+function PurchasesModule({purchases,inventory,suppliers,reload,toast}){
+  const[modal,setModal]=useState(false);
+  const[saving,setSaving]=useState(false);
+  const[period,setPeriod]=useState("month");
+  const[from,setFrom]=useState("");const[to,setTo]=useState("");
+  const empty={date:today(),symbol:"USDT",quantity:"",unit_cost:"",supplier:"",pay_method:"transferencia",notes:""};
+  const[form,setForm]=useState(empty);
   const f=k=>v=>setForm(p=>({...p,[k]:v}));
 
-  const filtered=sales.filter(s=>{
-    const q=search.toLowerCase();
-    return (s.client_name?.toLowerCase().includes(q)||s.product.toLowerCase().includes(q))&&(filter==="all"||s.status===filter);
-  });
-
-  const tots={
-    sales:filtered.reduce((a,s)=>a+s.price*s.qty,0),
-    profit:filtered.reduce((a,s)=>a+(s.price-s.cost)*s.qty,0),
-    pending:filtered.filter(s=>s.status!=="paid").reduce((a,s)=>a+(s.price*s.qty-(s.paid||0)),0),
-  };
-
-  const save=async()=>{
-    if(!form.product||!form.client_name){toast("Completa cliente y producto","error");return;}
-    setSaving(true);
-    try{
-      const entry=await api.addSale({...form,qty:+form.qty,cost:+form.cost,price:+form.price,paid:+form.paid});
-      setSales(p=>[entry,...p]);
-      setModal(false);setForm(emptyForm);toast("Venta registrada");
-    }catch(e){toast(e.message,"error");}
-    finally{setSaving(false);}
-  };
-
-  const doPayment=async(sale,amount,method)=>{
-    try{
-      const {paid,status}=await api.addPayment(sale.id,+amount,method,sale.paid||0,sale.price*sale.qty);
-      setSales(p=>p.map(s=>s.id!==sale.id?s:{...s,paid,status}));
-      setPayMod(null);setDetail(null);toast(`Abono de ${fmt(+amount)} registrado`);
-    }catch(e){toast(e.message,"error");}
-  };
-
-  const cols=[
-    {key:"date",label:"Fecha"},
-    {key:"client_name",label:"Cliente"},
-    {key:"product",label:"Producto"},
-    {key:"qty",label:"Cant"},
-    {key:"total",label:"Total",render:(_,r)=>React.createElement("b",null,fmt(r.price*r.qty))},
-    {key:"profit",label:"Ganancia",render:(_,r)=>React.createElement("span",{style:{color:C.green,fontWeight:600}},fmt((r.price-r.cost)*r.qty))},
-    {key:"status",label:"Estado",render:(v,r)=>React.createElement("div",{style:{display:"flex",gap:6,alignItems:"center"}},
-      React.createElement(Badge,{status:v}),
-      v!=="paid"&&React.createElement("button",{onClick:e=>{e.stopPropagation();setPayMod(r)},style:{fontSize:11,background:C.panel,border:`1px solid ${C.border}`,color:C.accent,borderRadius:6,padding:"2px 8px",cursor:"pointer"}},"Abonar")
-    )},
-  ];
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Libro de Ventas",sub:`${sales.length} registros`,action:"Nueva Venta",onAction:()=>setModal(true)}),
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Total Ventas",value:fmtK(tots.sales),accent:C.accent}),
-      React.createElement(StatCard,{label:"Ganancia",value:fmtK(tots.profit),accent:C.green}),
-      React.createElement(StatCard,{label:"Por Cobrar",value:fmtK(tots.pending),accent:C.amber}),
-      React.createElement(StatCard,{label:"Registros",value:filtered.length})
-    ),
-    React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap"}},
-      React.createElement(SearchBar,{value:search,onChange:setSearch,placeholder:"Buscar cliente o producto..."}),
-      React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-        [["all","Todos"],["paid","Pagados"],["partial","Abonados"],["pending","Pendientes"]].map(([v,l])=>
-          React.createElement(FilterPill,{key:v,label:l,active:filter===v,onClick:()=>setFilter(v)})
-        )
-      )
-    ),
-    React.createElement(Table,{cols,rows:filtered,onRowClick:setDetail,emptyMsg:"No hay ventas registradas"}),
-
-    modal&&React.createElement(Modal,{title:"Nueva Venta",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Fecha",type:"date",value:form.date,onChange:f("date")}),
-          React.createElement(Sel,{label:"Estado",value:form.status,onChange:f("status"),options:[{value:"paid",label:"Pagado"},{value:"partial",label:"Abonado"},{value:"pending",label:"Pendiente"}]})
-        ),
-        React.createElement(Inp,{label:"Cliente",value:form.client_name,onChange:f("client_name"),placeholder:"Nombre del cliente"}),
-        React.createElement(Inp,{label:"Producto",value:form.product,onChange:f("product"),placeholder:"Nombre del producto"}),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Cantidad",type:"number",value:form.qty,onChange:f("qty")}),
-          React.createElement(Inp,{label:"Costo unit.",type:"number",value:form.cost,onChange:f("cost")}),
-          React.createElement(Inp,{label:"Precio venta",type:"number",value:form.price,onChange:f("price")})
-        ),
-        form.status==="partial"&&React.createElement(Inp,{label:"Valor abonado",type:"number",value:form.paid,onChange:f("paid")}),
-        React.createElement(Inp,{label:"Notas",value:form.notes,onChange:f("notes")}),
-        +form.price>0&&+form.qty>0&&React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:12,display:"flex",gap:16}},
-          React.createElement("span",{style:{fontSize:13,color:C.muted}},"Total: ",React.createElement("b",{style:{color:C.text}},fmt(+form.price*+form.qty))),
-          React.createElement("span",{style:{fontSize:13,color:C.muted}},"Ganancia: ",React.createElement("b",{style:{color:C.green}},fmt((+form.price-+form.cost)*+form.qty)))
-        ),
-        React.createElement(Btn,{onClick:save,disabled:saving,full:true},saving?"Guardando...":"Guardar Venta")
-      )
-    ),
-
-    detail&&React.createElement(Modal,{title:"Detalle de Venta",onClose:()=>setDetail(null)},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
-          [["Cliente",detail.client_name],["Producto",detail.product],["Fecha",detail.date],["Cantidad",detail.qty],
-           ["Total",fmt(detail.price*detail.qty)],["Pagado",fmt(detail.paid||0)],["Saldo",fmt(detail.price*detail.qty-(detail.paid||0))],["Ganancia",fmt((detail.price-detail.cost)*detail.qty)]]
-          .map(([k,v])=>React.createElement("div",{key:k,style:{background:C.panel,borderRadius:8,padding:10}},
-            React.createElement("div",{style:{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:2}},k),
-            React.createElement("div",{style:{fontSize:14,color:C.text,fontWeight:600}},v)
-          ))
-        ),
-        React.createElement(Badge,{status:detail.status}),
-        detail.notes&&React.createElement("p",{style:{margin:0,fontSize:13,color:C.muted}},`📝 ${detail.notes}`),
-        React.createElement("div",{style:{display:"flex",gap:8}},
-          detail.status!=="paid"&&React.createElement(Btn,{onClick:()=>setPayMod(detail)},"Registrar Abono"),
-          React.createElement(Btn,{variant:"secondary",danger:true,onClick:async()=>{
-            await api.deleteSale(detail.id);
-            setSales(p=>p.filter(s=>s.id!==detail.id));
-            setDetail(null);toast("Venta eliminada");
-          }},"Eliminar")
-        )
-      )
-    ),
-
-    payMod&&React.createElement(PayModal,{sale:payMod,onClose:()=>setPayMod(null),onSave:doPayment})
-  );
-}
-
-function PayModal({sale,onClose,onSave}){
-  const [amount,setAmount]=useState("");
-  const [method,setMethod]=useState("efectivo");
-  const total=sale.price*sale.qty,pending=total-(sale.paid||0);
-  return React.createElement(Modal,{title:"Registrar Abono",onClose},
-    React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-      React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:12}},
-        React.createElement("p",{style:{margin:0,fontSize:13,color:C.muted}},`${sale.client_name} — ${sale.product}`),
-        React.createElement("p",{style:{margin:"4px 0 0",fontSize:14,color:C.text}},"Total: ",React.createElement("b",null,fmt(total))," · Saldo: ",React.createElement("b",{style:{color:C.rose}},fmt(pending)))
-      ),
-      React.createElement(Inp,{label:"Valor del abono",type:"number",value:amount,onChange:setAmount,placeholder:String(pending)}),
-      React.createElement(Sel,{label:"Método",value:method,onChange:setMethod,options:["Efectivo","Transferencia","Nequi","Daviplata"].map(m=>({value:m.toLowerCase(),label:m}))}),
-      React.createElement(Btn,{onClick:()=>onSave(sale,+amount,method),disabled:!amount||+amount<=0,full:true},"Registrar Abono")
-    )
-  );
-}
-
-// ─── MÓDULO: CARTERA ──────────────────────────────────────────────────────────
-function PortfolioModule({sales,setSales,toast}){
-  const pending=sales.filter(s=>s.status!=="paid");
-  const [payMod,setPayMod]=useState(null);
-  const totalPending=pending.reduce((a,s)=>a+(s.price*s.qty-(s.paid||0)),0);
-  const totalSales=pending.reduce((a,s)=>a+s.price*s.qty,0);
-  const recovered=totalSales-totalPending;
-
-  const doPayment=async(sale,amount,method)=>{
-    try{
-      const {paid,status}=await api.addPayment(sale.id,+amount,method,sale.paid||0,sale.price*sale.qty);
-      setSales(p=>p.map(s=>s.id!==sale.id?s:{...s,paid,status}));
-      setPayMod(null);toast(`Abono de ${fmt(+amount)} registrado`);
-    }catch(e){toast(e.message,"error");}
-  };
-
-  const cols=[
-    {key:"date",label:"Fecha"},
-    {key:"client_name",label:"Cliente"},
-    {key:"product",label:"Producto"},
-    {key:"total",label:"Total",render:(_,r)=>fmt(r.price*r.qty)},
-    {key:"paid",label:"Pagado",render:v=>React.createElement("span",{style:{color:C.green}},fmt(v||0))},
-    {key:"balance",label:"Saldo",render:(_,r)=>{
-      const bal=r.price*r.qty-(r.paid||0),pct=Math.round(((r.paid||0)/(r.price*r.qty))*100);
-      return React.createElement("div",null,
-        React.createElement("span",{style:{color:C.rose,fontWeight:600}},fmt(bal)),
-        React.createElement("div",{style:{marginTop:3,height:3,background:C.border,borderRadius:2,width:70}},
-          React.createElement("div",{style:{height:"100%",background:C.green,borderRadius:2,width:`${pct}%`}})
-        )
-      );
-    }},
-    {key:"status",label:"Estado",render:v=>React.createElement(Badge,{status:v})},
-    {key:"act",label:"",render:(_,r)=>React.createElement("button",{onClick:e=>{e.stopPropagation();setPayMod(r)},style:{fontSize:12,background:C.card2,border:`1px solid ${C.border}`,color:C.accent,borderRadius:7,padding:"4px 12px",cursor:"pointer",fontWeight:600}},"Abonar")},
-  ];
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Cartera y Abonos",sub:`${pending.length} facturas pendientes`}),
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Por Cobrar",value:fmtK(totalPending),accent:C.rose}),
-      React.createElement(StatCard,{label:"Recuperado",value:fmtK(recovered),accent:C.green}),
-      React.createElement(StatCard,{label:"Total Cartera",value:fmtK(totalSales),accent:C.accent}),
-      React.createElement(StatCard,{label:"% Recuperado",value:`${totalSales>0?Math.round((recovered/totalSales)*100):0}%`,accent:C.green})
-    ),
-    React.createElement(Table,{cols,rows:pending,emptyMsg:"¡Sin cartera pendiente! 🎉"}),
-    payMod&&React.createElement(PayModal,{sale:payMod,onClose:()=>setPayMod(null),onSave:doPayment})
-  );
-}
-
-// ─── MÓDULO: CLIENTES ─────────────────────────────────────────────────────────
-function ClientsModule({clients,setClients,sales,toast}){
-  const [search,setSearch]=useState("");
-  const [modal,setModal]=useState(false);
-  const [detail,setDetail]=useState(null);
-  const emptyForm={name:"",phone:"",city:"",address:"",notes:""};
-  const [form,setForm]=useState(emptyForm);
-  const f=k=>v=>setForm(p=>({...p,[k]:v}));
-
-  const enriched=clients.map(c=>({
-    ...c,
-    total_bought:c.total_bought??sales.filter(s=>s.client_name===c.name).reduce((a,s)=>a+s.price*s.qty,0),
-    balance:c.balance??sales.filter(s=>s.client_name===c.name&&s.status!=="paid").reduce((a,s)=>a+(s.price*s.qty-(s.paid||0)),0),
-  }));
-
-  const filtered=enriched.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||(c.city||"").toLowerCase().includes(search.toLowerCase()));
-
-  const save=async()=>{
-    if(!form.name){toast("El nombre es requerido","error");return;}
-    try{
-      const c=await api.addClient(form);
-      setClients(p=>[...p,c]);setModal(false);setForm(emptyForm);toast("Cliente creado");
-    }catch(e){toast(e.message,"error");}
-  };
-
-  const waUrl=(c,msg)=>`https://wa.me/57${(c.phone||"").replace(/[-\s]/g,"")}?text=${encodeURIComponent(msg)}`;
-
-  const cols=[
-    {key:"name",label:"Cliente"},
-    {key:"phone",label:"Teléfono"},
-    {key:"city",label:"Ciudad"},
-    {key:"total_bought",label:"Total Comprado",render:v=>fmt(v)},
-    {key:"balance",label:"Saldo",render:v=>React.createElement("b",{style:{color:v>0?C.rose:C.green}},fmt(v))},
-    {key:"last_purchase",label:"Última Compra"},
-    {key:"wa",label:"",render:(_,r)=>React.createElement("button",{onClick:e=>{e.stopPropagation();window.open(waUrl(r,`Hola ${r.name}, tiene un saldo pendiente de ${fmt(r.balance||0)}. ¡Quedamos atentos! 🙏`),"_blank")},style:{fontSize:11,background:"#0D2B1D",border:`1px solid ${C.green}`,color:C.green,borderRadius:6,padding:"3px 10px",cursor:"pointer",fontWeight:600}},"WA")},
-  ];
-
-  const clientSales=c=>sales.filter(s=>s.client_name===c.name);
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Clientes",sub:`${clients.length} clientes`,action:"Nuevo Cliente",onAction:()=>setModal(true)}),
-    React.createElement(SearchBar,{value:search,onChange:setSearch,placeholder:"Buscar por nombre o ciudad..."}),
-    React.createElement(Table,{cols,rows:filtered,onRowClick:setDetail}),
-
-    modal&&React.createElement(Modal,{title:"Nuevo Cliente",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement(Inp,{label:"Nombre completo",value:form.name,onChange:f("name")}),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Teléfono",value:form.phone,onChange:f("phone")}),
-          React.createElement(Inp,{label:"Ciudad",value:form.city,onChange:f("city")})
-        ),
-        React.createElement(Inp,{label:"Dirección",value:form.address,onChange:f("address")}),
-        React.createElement(Inp,{label:"Observaciones",value:form.notes,onChange:f("notes")}),
-        React.createElement(Btn,{onClick:save,full:true},"Guardar Cliente")
-      )
-    ),
-
-    detail&&React.createElement(Modal,{title:detail.name,onClose:()=>setDetail(null),wide:true},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
-          React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:12,textAlign:"center"}},
-            React.createElement("div",{style:{fontSize:20,fontWeight:700,color:C.text}},fmt(detail.total_bought||0)),
-            React.createElement("div",{style:{fontSize:11,color:C.muted}},"Total Comprado")
-          ),
-          React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:12,textAlign:"center"}},
-            React.createElement("div",{style:{fontSize:20,fontWeight:700,color:(detail.balance||0)>0?C.rose:C.green}},fmt(detail.balance||0)),
-            React.createElement("div",{style:{fontSize:11,color:C.muted}},"Saldo Pendiente")
-          )
-        ),
-        React.createElement("p",{style:{margin:0,fontSize:13,color:C.muted}},`📞 ${detail.phone||"—"} · 📍 ${detail.city||"—"}`),
-        detail.notes&&React.createElement("p",{style:{margin:0,fontSize:13,color:C.muted}},`💬 ${detail.notes}`),
-        React.createElement("h4",{style:{margin:"4px 0 0",color:C.text,fontSize:14}},"Historial de Compras"),
-        React.createElement("div",{style:{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}},
-          clientSales(detail).length===0&&React.createElement("p",{style:{color:C.muted,fontSize:13}},"Sin compras registradas"),
-          clientSales(detail).map(s=>React.createElement("div",{key:s.id,style:{background:C.panel,borderRadius:8,padding:10,display:"flex",justifyContent:"space-between",alignItems:"center"}},
-            React.createElement("div",null,
-              React.createElement("div",{style:{fontSize:13,color:C.text}},`${s.product} × ${s.qty}`),
-              React.createElement("div",{style:{fontSize:11,color:C.muted}},s.date)
-            ),
-            React.createElement("div",{style:{textAlign:"right"}},
-              React.createElement("div",{style:{fontSize:13,fontWeight:600}},fmt(s.price*s.qty)),
-              React.createElement(Badge,{status:s.status})
-            )
-          ))
-        ),
-        React.createElement("div",{style:{display:"flex",gap:8}},
-          React.createElement("button",{onClick:()=>window.open(waUrl(detail,`Hola ${detail.name}! Le recordamos su saldo de ${fmt(detail.balance||0)}. ¿Podemos coordinar el pago? 🙏`),"_blank"),style:{flex:1,padding:10,background:"#0D2B1D",border:`1px solid ${C.green}`,color:C.green,borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}},"📲 Recordatorio WA"),
-          React.createElement("button",{onClick:()=>window.open(waUrl(detail,`*Estado de Cuenta — ${detail.name}*\n\nTotal comprado: ${fmt(detail.total_bought||0)}\nSaldo pendiente: ${fmt(detail.balance||0)}\n\nGracias 🙏`),"_blank"),style:{flex:1,padding:10,background:C.panel,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:600}},"📄 Estado de Cuenta")
-        )
-      )
-    )
-  );
-}
-
-// ─── MÓDULO: INVENTARIO ───────────────────────────────────────────────────────
-function InventoryModule({products,setProducts,toast}){
-  const [search,setSearch]=useState("");
-  const [modal,setModal]=useState(false);
-  const [adjMod,setAdjMod]=useState(null);
-  const emptyForm={name:"",sku:"",stock:"0",min_stock:"5",cost:"0",price:"0",category:"Ropa"};
-  const [form,setForm]=useState(emptyForm);
-  const f=k=>v=>setForm(p=>({...p,[k]:v}));
-
-  const filtered=products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())||(p.sku||"").toLowerCase().includes(search.toLowerCase()));
-  const totalVal=products.reduce((a,p)=>a+p.stock*p.cost,0);
-  const potRev=products.reduce((a,p)=>a+p.stock*p.price,0);
-  const CATS=["Ropa","Calzado","Accesorios","Tecnología","Alimentos","Otros"];
-
-  const save=async()=>{
-    if(!form.name){toast("El nombre es requerido","error");return;}
-    try{
-      const p=await api.addProduct({...form,stock:+form.stock,min_stock:+form.min_stock,cost:+form.cost,price:+form.price});
-      setProducts(prev=>[...prev,p]);setModal(false);setForm(emptyForm);toast("Producto creado");
-    }catch(e){toast(e.message,"error");}
-  };
-
-  const doAdj=async(id,delta,curr)=>{
-    try{
-      const newStock=await api.adjustStock(id,delta,curr);
-      setProducts(p=>p.map(x=>x.id!==id?x:{...x,stock:newStock}));
-      setAdjMod(null);toast("Stock actualizado");
-    }catch(e){toast(e.message,"error");}
-  };
-
-  const cols=[
-    {key:"name",label:"Producto"},
-    {key:"sku",label:"SKU"},
-    {key:"category",label:"Cat."},
-    {key:"stock",label:"Stock",render:(v,r)=>React.createElement("b",{style:{color:v<=r.min_stock?C.rose:C.green}},v)},
-    {key:"min_stock",label:"Mín."},
-    {key:"cost",label:"Costo",render:v=>fmt(v)},
-    {key:"price",label:"Precio",render:v=>fmt(v)},
-    {key:"margin",label:"Margen",render:(_,r)=>React.createElement("span",{style:{color:C.green}},r.cost>0?`${Math.round(((r.price-r.cost)/r.cost)*100)}%`:"—")},
-    {key:"adj",label:"",render:(_,r)=>React.createElement("button",{onClick:e=>{e.stopPropagation();setAdjMod(r)},style:{fontSize:11,background:C.card2,border:`1px solid ${C.border}`,color:C.accent,borderRadius:6,padding:"3px 10px",cursor:"pointer"}},"Ajustar")},
-  ];
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Inventario",sub:`${products.length} productos`,action:"Nuevo Producto",onAction:()=>setModal(true)}),
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Productos",value:products.length}),
-      React.createElement(StatCard,{label:"Valor Inventario",value:fmtK(totalVal),accent:C.accent}),
-      React.createElement(StatCard,{label:"Venta Potencial",value:fmtK(potRev),accent:C.green}),
-      React.createElement(StatCard,{label:"Stock Bajo",value:products.filter(p=>p.stock<=p.min_stock).length,accent:C.rose})
-    ),
-    React.createElement(SearchBar,{value:search,onChange:setSearch,placeholder:"Buscar producto o SKU..."}),
-    React.createElement(Table,{cols,rows:filtered}),
-
-    modal&&React.createElement(Modal,{title:"Nuevo Producto",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Nombre",value:form.name,onChange:f("name")}),
-          React.createElement(Inp,{label:"SKU",value:form.sku,onChange:f("sku")}),
-          React.createElement(Inp,{label:"Stock inicial",type:"number",value:form.stock,onChange:f("stock")}),
-          React.createElement(Inp,{label:"Stock mínimo",type:"number",value:form.min_stock,onChange:f("min_stock")}),
-          React.createElement(Inp,{label:"Costo unitario",type:"number",value:form.cost,onChange:f("cost")}),
-          React.createElement(Inp,{label:"Precio de venta",type:"number",value:form.price,onChange:f("price")})
-        ),
-        React.createElement(Sel,{label:"Categoría",value:form.category,onChange:f("category"),options:CATS.map(c=>({value:c,label:c}))}),
-        +form.cost>0&&+form.price>0&&React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:10}},
-          React.createElement("span",{style:{fontSize:13,color:C.muted}},"Margen: ",React.createElement("b",{style:{color:C.green}},`${Math.round(((+form.price-+form.cost)/+form.cost)*100)}%`))
-        ),
-        React.createElement(Btn,{onClick:save,full:true},"Guardar Producto")
-      )
-    ),
-
-    adjMod&&React.createElement(Modal,{title:`Ajustar Stock — ${adjMod.name}`,onClose:()=>setAdjMod(null)},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:14}},
-        React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:16,textAlign:"center"}},
-          React.createElement("div",{style:{fontSize:36,fontWeight:700,color:adjMod.stock<=adjMod.min_stock?C.rose:C.green}},adjMod.stock),
-          React.createElement("div",{style:{fontSize:12,color:C.muted}},"Stock actual")
-        ),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}},
-          [1,5,10,20].map(d=>React.createElement("div",{key:d,style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}},
-            React.createElement("button",{onClick:()=>doAdj(adjMod.id,d,adjMod.stock),style:{padding:12,background:"#0D2B1D",border:`1px solid ${C.green}`,color:C.green,borderRadius:8,cursor:"pointer",fontSize:15,fontWeight:700}},`+${d}`),
-            React.createElement("button",{onClick:()=>doAdj(adjMod.id,-d,adjMod.stock),style:{padding:12,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:8,cursor:"pointer",fontSize:15,fontWeight:700}},`−${d}`)
-          ))
-        )
-      )
-    )
-  );
-}
-
-// ─── MÓDULO: GASTOS ───────────────────────────────────────────────────────────
-function ExpensesModule({expenses,setExpenses,toast}){
-  const [modal,setModal]=useState(false);
-  const emptyForm={date:today(),category:"Arriendo",description:"",amount:""};
-  const [form,setForm]=useState(emptyForm);
-  const f=k=>v=>setForm(p=>({...p,[k]:v}));
-  const CATS=["Arriendo","Servicios","Transporte","Publicidad","Nómina","Otros"];
-  const CC={Arriendo:C.accent,Servicios:C.green,Transporte:C.amber,Publicidad:"#A855F7",Nómina:C.rose,Otros:C.slate};
-  const grand=expenses.reduce((a,e)=>a+e.amount,0);
-  const catTotals=CATS.map(cat=>({cat,total:expenses.filter(e=>e.category===cat).reduce((a,e)=>a+e.amount,0)}));
-
-  const save=async()=>{
-    if(!form.amount||+form.amount<=0){toast("Ingresa un valor válido","error");return;}
-    try{
-      const e=await api.addExpense({...form,amount:+form.amount});
-      setExpenses(p=>[e,...p]);setModal(false);setForm(emptyForm);toast("Gasto registrado");
-    }catch(e2){toast(e2.message,"error");}
-  };
-
-  const cols=[
-    {key:"date",label:"Fecha"},
-    {key:"category",label:"Categoría",render:v=>React.createElement("span",{style:{padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:`${CC[v]||C.slate}22`,color:CC[v]||C.slate}},v)},
-    {key:"description",label:"Descripción"},
-    {key:"amount",label:"Valor",render:v=>React.createElement("b",{style:{color:C.rose}},fmt(v))},
-    {key:"del",label:"",render:(_,r)=>React.createElement("button",{onClick:async e=>{e.stopPropagation();await api.deleteExpense(r.id);setExpenses(p=>p.filter(x=>x.id!==r.id));toast("Gasto eliminado");},style:{fontSize:11,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:6,padding:"2px 8px",cursor:"pointer"}},"✕")},
-  ];
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Gastos",sub:`Total: ${fmt(grand)}`,action:"Nuevo Gasto",onAction:()=>setModal(true)}),
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8}},
-      catTotals.map(c=>React.createElement("div",{key:c.cat,style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"11px 13px"}},
-        React.createElement("div",{style:{fontSize:9,color:CC[c.cat],fontWeight:700,textTransform:"uppercase",letterSpacing:.6,marginBottom:3}},c.cat),
-        React.createElement("div",{style:{fontSize:15,fontWeight:700,color:C.text}},fmtK(c.total)),
-        React.createElement("div",{style:{marginTop:4,height:3,background:C.border,borderRadius:2}},
-          React.createElement("div",{style:{height:"100%",background:CC[c.cat],borderRadius:2,width:grand>0?`${(c.total/grand)*100}%`:"0%"}})
-        )
-      ))
-    ),
-    React.createElement(Table,{cols,rows:expenses}),
-    modal&&React.createElement(Modal,{title:"Nuevo Gasto",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Fecha",type:"date",value:form.date,onChange:f("date")}),
-          React.createElement(Sel,{label:"Categoría",value:form.category,onChange:f("category"),options:CATS.map(c=>({value:c,label:c}))})
-        ),
-        React.createElement(Inp,{label:"Descripción",value:form.description,onChange:f("description")}),
-        React.createElement(Inp,{label:"Valor",type:"number",value:form.amount,onChange:f("amount"),placeholder:"0"}),
-        React.createElement(Btn,{onClick:save,full:true},"Guardar Gasto")
-      )
-    )
-  );
-}
-
-// ─── MÓDULO: PROVEEDORES ──────────────────────────────────────────────────────
-function SuppliersModule({suppliers,setSuppliers,toast}){
-  const [modal,setModal]=useState(false);
-  const emptyForm={name:"",contact:"",phone:"",city:"",notes:""};
-  const [form,setForm]=useState(emptyForm);
-  const f=k=>v=>setForm(p=>({...p,[k]:v}));
-
-  const save=async()=>{
-    if(!form.name){toast("El nombre es requerido","error");return;}
-    try{
-      const s=await api.addSupplier(form);
-      setSuppliers(p=>[...p,s]);setModal(false);setForm(emptyForm);toast("Proveedor creado");
-    }catch(e){toast(e.message,"error");}
-  };
-
-  const cols=[
-    {key:"name",label:"Empresa"},
-    {key:"contact",label:"Contacto"},
-    {key:"phone",label:"Teléfono"},
-    {key:"city",label:"Ciudad"},
-    {key:"wa",label:"",render:(_,r)=>React.createElement("button",{onClick:e=>{e.stopPropagation();window.open(`https://wa.me/57${(r.phone||"").replace(/[-\s]/g,"")}`,"_blank")},style:{fontSize:11,background:"#0D2B1D",border:`1px solid ${C.green}`,color:C.green,borderRadius:6,padding:"3px 10px",cursor:"pointer"}},"WA")},
-  ];
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Proveedores",sub:`${suppliers.length} proveedores`,action:"Nuevo Proveedor",onAction:()=>setModal(true)}),
-    React.createElement(Table,{cols,rows:suppliers}),
-    modal&&React.createElement(Modal,{title:"Nuevo Proveedor",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement(Inp,{label:"Empresa",value:form.name,onChange:f("name")}),
-        React.createElement(Inp,{label:"Contacto",value:form.contact,onChange:f("contact")}),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Teléfono",value:form.phone,onChange:f("phone")}),
-          React.createElement(Inp,{label:"Ciudad",value:form.city,onChange:f("city")})
-        ),
-        React.createElement(Inp,{label:"Notas",value:form.notes,onChange:f("notes")}),
-        React.createElement(Btn,{onClick:save,full:true},"Guardar Proveedor")
-      )
-    )
-  );
-}
-
-// ─── MÓDULO: COMPRAS ──────────────────────────────────────────────────────────
-function PurchasesModule({purchases,setPurchases,toast}){
-  const [modal,setModal]=useState(false);
-  const emptyForm={date:today(),supplier:"",product:"",qty:"1",unit_cost:"0",pay_method:"efectivo",notes:""};
-  const [form,setForm]=useState(emptyForm);
-  const f=k=>v=>setForm(p=>({...p,[k]:v}));
-  const total=purchases.reduce((a,p)=>a+p.qty*p.unit_cost,0);
-
-  const save=async()=>{
-    if(!form.product){toast("El producto es requerido","error");return;}
-    try{
-      const p=await api.addPurchase({...form,qty:+form.qty,unit_cost:+form.unit_cost});
-      setPurchases(prev=>[p,...prev]);setModal(false);setForm(emptyForm);toast("Compra registrada");
-    }catch(e){toast(e.message,"error");}
-  };
-
-  const cols=[
-    {key:"date",label:"Fecha"},
-    {key:"supplier",label:"Proveedor"},
-    {key:"product",label:"Producto"},
-    {key:"qty",label:"Cant"},
-    {key:"unit_cost",label:"Costo Unit.",render:v=>fmt(v)},
-    {key:"total",label:"Total",render:(_,r)=>React.createElement("b",null,fmt(r.qty*r.unit_cost))},
-    {key:"pay_method",label:"Método"},
-    {key:"notes",label:"Notas"},
-  ];
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Libro de Compras",sub:`${purchases.length} registros`,action:"Nueva Compra",onAction:()=>setModal(true)}),
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Total Compras",value:fmtK(total),accent:C.accent}),
-      React.createElement(StatCard,{label:"Registros",value:purchases.length})
-    ),
-    React.createElement(Table,{cols,rows:purchases}),
-    modal&&React.createElement(Modal,{title:"Nueva Compra",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Fecha",type:"date",value:form.date,onChange:f("date")}),
-          React.createElement(Sel,{label:"Método",value:form.pay_method,onChange:f("pay_method"),options:["Efectivo","Transferencia","Crédito","Cheque"].map(m=>({value:m.toLowerCase(),label:m}))})
-        ),
-        React.createElement(Inp,{label:"Proveedor",value:form.supplier,onChange:f("supplier")}),
-        React.createElement(Inp,{label:"Producto",value:form.product,onChange:f("product")}),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Cantidad",type:"number",value:form.qty,onChange:f("qty")}),
-          React.createElement(Inp,{label:"Costo unit.",type:"number",value:form.unit_cost,onChange:f("unit_cost")})
-        ),
-        React.createElement(Inp,{label:"Notas",value:form.notes,onChange:f("notes")}),
-        +form.qty>0&&+form.unit_cost>0&&React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:10}},
-          React.createElement("span",{style:{fontSize:13,color:C.muted}},"Total: ",React.createElement("b",{style:{color:C.text}},fmt(+form.qty*+form.unit_cost)))
-        ),
-        React.createElement(Btn,{onClick:save,full:true},"Guardar Compra")
-      )
-    )
-  );
-}
-
-// ─── MÓDULO: FLUJO DE CAJA ────────────────────────────────────────────────────
-function CashFlowModule({cashflow,setCashflow,toast}){
-  const [modal,setModal]=useState(false);
-  const [filter,setFilter]=useState("all");
-  const emptyForm={date:today(),type:"ingreso",description:"",amount:"",method:"efectivo"};
-  const [form,setForm]=useState(emptyForm);
-  const f=k=>v=>setForm(p=>({...p,[k]:v}));
-
-  const balance=cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0);
-  const ingresos=cashflow.filter(e=>e.type==="ingreso").reduce((a,e)=>a+e.amount,0);
-  const egresos=cashflow.filter(e=>e.type==="egreso").reduce((a,e)=>a+e.amount,0);
-  const filtered=cashflow.filter(e=>filter==="all"||e.type===filter);
-
-  const save=async()=>{
-    if(!form.amount||+form.amount<=0){toast("Ingresa un valor válido","error");return;}
-    try{
-      const e=await api.addCashFlow({...form,amount:+form.amount});
-      setCashflow(p=>[e,...p]);setModal(false);setForm(emptyForm);toast("Movimiento registrado");
-    }catch(e2){toast(e2.message,"error");}
-  };
-
-  const cols=[
-    {key:"date",label:"Fecha"},
-    {key:"type",label:"Tipo",render:v=>React.createElement("span",{style:{color:v==="ingreso"?C.green:C.rose,fontWeight:700,fontSize:11,textTransform:"uppercase"}},v)},
-    {key:"description",label:"Descripción"},
-    {key:"method",label:"Método"},
-    {key:"amount",label:"Valor",render:(v,r)=>React.createElement("b",{style:{color:r.type==="ingreso"?C.green:C.rose}},`${r.type==="ingreso"?"+":"-"}${fmt(v)}`)},
-    {key:"del",label:"",render:(_,r)=>React.createElement("button",{onClick:async e=>{e.stopPropagation();await api.deleteCashFlow(r.id);setCashflow(p=>p.filter(x=>x.id!==r.id));toast("Eliminado");},style:{fontSize:11,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:6,padding:"2px 8px",cursor:"pointer"}},"✕")},
-  ];
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Flujo de Caja",action:"Nuevo Movimiento",onAction:()=>setModal(true)}),
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Saldo Disponible",value:fmtK(balance),accent:balance>=0?C.green:C.rose}),
-      React.createElement(StatCard,{label:"Ingresos",value:fmtK(ingresos),accent:C.green}),
-      React.createElement(StatCard,{label:"Egresos",value:fmtK(egresos),accent:C.rose}),
-      React.createElement(StatCard,{label:"Movimientos",value:cashflow.length})
-    ),
-    React.createElement("div",{style:{display:"flex",gap:6}},
-      [["all","Todos"],["ingreso","Ingresos"],["egreso","Egresos"]].map(([v,l])=>
-        React.createElement(FilterPill,{key:v,label:l,active:filter===v,onClick:()=>setFilter(v)})
-      )
-    ),
-    React.createElement(Table,{cols,rows:filtered}),
-    modal&&React.createElement(Modal,{title:"Nuevo Movimiento",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Fecha",type:"date",value:form.date,onChange:f("date")}),
-          React.createElement(Sel,{label:"Tipo",value:form.type,onChange:f("type"),options:[{value:"ingreso",label:"Ingreso"},{value:"egreso",label:"Egreso"}]})
-        ),
-        React.createElement(Inp,{label:"Descripción",value:form.description,onChange:f("description")}),
-        React.createElement(Inp,{label:"Valor",type:"number",value:form.amount,onChange:f("amount")}),
-        React.createElement(Sel,{label:"Método",value:form.method,onChange:f("method"),options:["Efectivo","Transferencia","Nequi","Daviplata"].map(m=>({value:m.toLowerCase(),label:m}))}),
-        React.createElement(Btn,{onClick:save,full:true},"Registrar")
-      )
-    )
-  );
-}
-
-// ─── MÓDULO: GANANCIAS ────────────────────────────────────────────────────────
-function ProfitModule({sales,expenses}){
-  const tS=sales.reduce((a,s)=>a+s.price*s.qty,0);
-  const tC=sales.reduce((a,s)=>a+s.cost*s.qty,0);
-  const tE=expenses.reduce((a,e)=>a+e.amount,0);
-  const gB=tS-tC,nP=gB-tE,mg=tS>0?Math.round((nP/tS)*100):0;
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Ganancias y Reportes"}),
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Ingresos",value:fmtK(tS),accent:C.accent,spark:MS,sparkColor:C.accent}),
-      React.createElement(StatCard,{label:"Costo Ventas",value:fmtK(tC),accent:C.rose}),
-      React.createElement(StatCard,{label:"Ganancia Bruta",value:fmtK(gB),accent:C.amber}),
-      React.createElement(StatCard,{label:"Gastos Oper.",value:fmtK(tE),accent:C.rose}),
-      React.createElement(StatCard,{label:"Ganancia Neta",value:fmtK(nP),accent:C.green,spark:MS.map((v,i)=>v-ME[i]),sparkColor:C.green}),
-      React.createElement(StatCard,{label:"Margen Neto",value:`${mg}%`,accent:mg>20?C.green:mg>10?C.amber:C.rose})
-    ),
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      [{label:"Hoy",f:.03},{label:"Semana",f:.22},{label:"Mes",f:1},{label:"Año",f:12}].map(p=>{
-        const profit=(tS-tE)*p.f;
-        return React.createElement("div",{key:p.label,style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,textAlign:"center"}},
-          React.createElement("div",{style:{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:.6}},p.label),
-          React.createElement("div",{style:{fontSize:20,fontWeight:700,color:profit>=0?C.green:C.rose,marginTop:6,fontFamily:"monospace"}},fmtK(profit))
-        );
-      })
-    ),
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:22}},
-      React.createElement("h4",{style:{margin:"0 0 16px",color:C.text,fontSize:16,fontWeight:700}},"Estado de Resultados"),
-      [
-        {l:"(+) Ventas totales",v:tS,c:C.text},
-        {l:"(−) Costo de ventas",v:tC,c:C.rose},
-        {l:"= Ganancia bruta",v:gB,c:C.amber,b:true},
-        {l:"(−) Gastos operativos",v:tE,c:C.rose},
-        {l:"= Ganancia neta",v:nP,c:C.green,b:true,big:true},
-      ].map((r,i,arr)=>React.createElement("div",{key:r.l,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 0",borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none"}},
-        React.createElement("span",{style:{fontSize:r.big?15:13,color:C.text,fontWeight:r.b?700:400}},r.l),
-        React.createElement("span",{style:{fontSize:r.big?20:14,fontWeight:r.b?700:500,color:r.c,fontFamily:"monospace"}},fmt(r.v))
-      ))
-    ),
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-      React.createElement("h4",{style:{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}},"Ventas vs Gastos — Año"),
-      React.createElement(MiniBar,{series:[MS.map(v=>v/1000),ME.map(v=>v/1000)],labels:MLS,colors:[C.accent,C.rose],h:130})
-    )
-  );
-}
-
-// ─── NAVEGACIÓN ───────────────────────────────────────────────────────────────
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MÓDULO CRYPTO — API layer (extiende api existente, no reemplaza nada)
-// Reutiliza: suppliers→proveedores, clients→clientes, cash_flow→flujo de caja
-// Tablas nuevas: crypto_purchases, crypto_sales, crypto_inventory, crypto_kardex
-// ═══════════════════════════════════════════════════════════════════════════
-
-const COINS = ["USDT","USDC","BTC","ETH","BNB","TRX","SOL","DAI"];
-const COIN_COLORS = {
-  USDT:"#26A17B", USDC:"#2775CA", BTC:"#F7931A",
-  ETH:"#627EEA", BNB:"#F3BA2F", TRX:"#FF0013",
-  SOL:"#9945FF", DAI:"#F5AC37"
-};
-const fmtCrypto = (n,sym) => {
-  const d = sym==="BTC"?8:sym==="ETH"||sym==="SOL"?4:2;
-  return parseFloat((n||0).toFixed(d)).toString();
-};
-
-const cryptoApi = {
-  // ── Inventario ──────────────────────────────────────────
-  async getInventory(){
-    const {data,error}=await sb.from("crypto_inventory_view").select("*");
-    if(error) throw error;
-    return data||[];
-  },
-
-  // ── Compras crypto ──────────────────────────────────────
-  async getCryptoPurchases(){
-    const {data,error}=await sb.from("crypto_purchases").select("*").order("date",{ascending:false});
-    if(error) throw error;
-    return data||[];
-  },
-  async addCryptoPurchase(p){
-    // 1. Insertar compra
-    const {data,error}=await sb.from("crypto_purchases").insert({
-      date:p.date, symbol:p.symbol, quantity:+p.quantity,
-      unit_cost:+p.unit_cost, total:+p.quantity*+p.unit_cost,
-      currency:p.currency||"COP", supplier:p.supplier,
-      pay_method:p.pay_method, notes:p.notes
-    }).select().single();
-    if(error) throw error;
-
-    // 2. Llamar función SQL que actualiza inventario y kardex
-    const {error:e2}=await sb.rpc("process_crypto_purchase",{
-      p_id:data.id, p_user_id:data.user_id,
-      p_date:data.date, p_symbol:data.symbol,
-      p_quantity:data.quantity, p_cost:data.unit_cost, p_total:data.total
-    });
-    if(e2) throw e2;
-
-    // 3. Registrar en flujo de caja automáticamente
-    await sb.from("cash_flow").insert({
-      date:p.date, type:"egreso",
-      description:`Compra ${p.quantity} ${p.symbol} @ ${fmt(+p.unit_cost)}`,
-      amount:+p.quantity*+p.unit_cost, method:p.pay_method||"transferencia",
-      notes:`Proveedor: ${p.supplier||"—"}`
-    });
-
-    return data;
-  },
-
-  // ── Ventas crypto ───────────────────────────────────────
-  async getCryptoSales(){
-    const {data,error}=await sb.from("crypto_sales").select("*").order("date",{ascending:false});
-    if(error) throw error;
-    return data||[];
-  },
-  async addCryptoSale(s){
-    // 1. Insertar venta (avg_cost_used, cogs, gross_profit los calcula la función)
-    const {data,error}=await sb.from("crypto_sales").insert({
-      date:s.date, symbol:s.symbol, quantity:+s.quantity,
-      unit_price:+s.unit_price, total:+s.quantity*+s.unit_price,
-      avg_cost_used:0, cogs:0, gross_profit:0,
-      currency:s.currency||"COP", client:s.client,
-      pay_method:s.pay_method, notes:s.notes
-    }).select().single();
-    if(error) throw error;
-
-    // 2. Llamar función SQL que calcula utilidad y actualiza inventario
-    const {data:calc,error:e2}=await sb.rpc("process_crypto_sale",{
-      p_id:data.id, p_user_id:data.user_id,
-      p_date:data.date, p_symbol:data.symbol,
-      p_quantity:data.quantity, p_price:data.unit_price, p_total:data.total
-    });
-    if(e2) throw e2;
-
-    // 3. Registrar en flujo de caja automáticamente
-    await sb.from("cash_flow").insert({
-      date:s.date, type:"ingreso",
-      description:`Venta ${s.quantity} ${s.symbol} @ ${fmt(+s.unit_price)}`,
-      amount:+s.quantity*+s.unit_price, method:s.pay_method||"transferencia",
-      notes:`Cliente: ${s.client||"—"}`
-    });
-
-    return {...data,...(calc?.[0]||{})};
-  },
-
-  // ── Kardex ──────────────────────────────────────────────
-  async getKardex(symbol){
-    let q=sb.from("crypto_kardex").select("*").order("created_at",{ascending:false});
-    if(symbol&&symbol!=="all") q=q.eq("symbol",symbol);
-    const {data,error}=await q;
-    if(error) throw error;
-    return data||[];
-  },
-
-  // ── Dashboard crypto ────────────────────────────────────
-  async getCryptoDashboard(){
-    const todayStr=new Date().toISOString().split("T")[0];
-    const monthStr=todayStr.slice(0,7);
-    const [inv,todaySales,monthSales]=await Promise.all([
-      sb.from("crypto_inventory_view").select("*"),
-      sb.from("crypto_sales").select("gross_profit,total,symbol").eq("date",todayStr),
-      sb.from("crypto_sales").select("gross_profit,total,cogs,symbol").gte("date",monthStr+"-01"),
-    ]);
-    return {
-      inventory: inv.data||[],
-      todayProfit: (todaySales.data||[]).reduce((a,s)=>a+s.gross_profit,0),
-      todayRevenue:(todaySales.data||[]).reduce((a,s)=>a+s.total,0),
-      monthProfit: (monthSales.data||[]).reduce((a,s)=>a+s.gross_profit,0),
-      monthRevenue:(monthSales.data||[]).reduce((a,s)=>a+s.total,0),
-      monthCogs:   (monthSales.data||[]).reduce((a,s)=>a+s.cogs,0),
-    };
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// COMPONENTE: CryptoDashboard (se inyecta en el Dashboard principal)
-// ═══════════════════════════════════════════════════════════════════════════
-function CryptoDashboardPanel(){
-  const [data,setData]=useState(null);
-  const [loading,setLoading]=useState(true);
-
-  useEffect(()=>{
-    cryptoApi.getCryptoDashboard()
-      .then(d=>setData(d))
-      .catch(()=>{})
-      .finally(()=>setLoading(false));
-  },[]);
-
-  if(loading) return React.createElement("div",{style:{color:C.muted,padding:20,textAlign:"center"}},"Cargando datos crypto...");
-  if(!data||!data.inventory.length) return React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:20,color:C.muted,textAlign:"center"}},"Sin operaciones crypto registradas");
-
-  const totalInvested=data.inventory.reduce((a,i)=>a+i.total_invested,0);
-  const totalProfit  =data.inventory.reduce((a,i)=>a+i.accumulated_profit,0);
-
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-    // Título sección
-    React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},
-      React.createElement("span",{style:{fontSize:18}},"₿"),
-      React.createElement("h3",{style:{margin:0,fontSize:15,fontWeight:700,color:C.text}},"Casa de Cambio Digital")
-    ),
-
-    // KPIs crypto
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Ganancia Hoy",value:fmtK(data.todayProfit),accent:data.todayProfit>=0?C.green:C.rose}),
-      React.createElement(StatCard,{label:"Ganancia Mes",value:fmtK(data.monthProfit),accent:C.green}),
-      React.createElement(StatCard,{label:"Ingresos Mes",value:fmtK(data.monthRevenue),accent:C.accent}),
-      React.createElement(StatCard,{label:"Capital Invertido",value:fmtK(totalInvested),accent:C.amber}),
-      React.createElement(StatCard,{label:"Utilidad Acum.",value:fmtK(totalProfit),accent:C.green}),
-      React.createElement(StatCard,{label:"ROI Gral.",value:`${totalInvested>0?((totalProfit/totalInvested)*100).toFixed(1):0}%`,accent:C.accentL})
-    ),
-
-    // Inventario por moneda
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-      React.createElement("h4",{style:{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}},"Inventario Actual por Moneda"),
-      React.createElement("div",{style:{overflowX:"auto"}},
-        React.createElement("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:13}},
-          React.createElement("thead",null,
-            React.createElement("tr",{style:{background:C.panel}},
-              ["Moneda","Cantidad","Costo Prom.","Invertido","Utilidad","ROI"].map(h=>
-                React.createElement("th",{key:h,style:{padding:"8px 12px",textAlign:"left",color:C.muted,fontSize:10,fontWeight:700,textTransform:"uppercase",borderBottom:`1px solid ${C.border}`,whiteSpace:"nowrap"}},h)
-              )
-            )
-          ),
-          React.createElement("tbody",null,
-            data.inventory.filter(i=>i.quantity>0).map(inv=>
-              React.createElement("tr",{key:inv.symbol,style:{borderBottom:`1px solid ${C.border}`}},
-                React.createElement("td",{style:{padding:"10px 12px"}},
-                  React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},
-                    React.createElement("span",{style:{width:8,height:8,borderRadius:"50%",background:COIN_COLORS[inv.symbol]||C.accent,display:"inline-block"}}),
-                    React.createElement("b",{style:{color:C.text}},inv.symbol)
-                  )
-                ),
-                React.createElement("td",{style:{padding:"10px 12px",color:C.text,fontFamily:"monospace"}},fmtCrypto(inv.quantity,inv.symbol)),
-                React.createElement("td",{style:{padding:"10px 12px",color:C.text}},fmt(inv.avg_cost)),
-                React.createElement("td",{style:{padding:"10px 12px",color:C.amber,fontWeight:600}},fmt(inv.total_invested)),
-                React.createElement("td",{style:{padding:"10px 12px",color:inv.accumulated_profit>=0?C.green:C.rose,fontWeight:600}},fmt(inv.accumulated_profit)),
-                React.createElement("td",{style:{padding:"10px 12px"}},
-                  React.createElement("span",{style:{color:inv.roi_pct>=0?C.green:C.rose,fontWeight:600}},`${inv.roi_pct}%`)
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MÓDULO: COMPRAS CRYPTO
-// ═══════════════════════════════════════════════════════════════════════════
-function CryptoPurchasesModule({suppliers,toast}){
-  const [purchases,setPurchases]=useState([]);
-  const [inventory,setInventory]=useState([]);
-  const [modal,setModal]=useState(false);
-  const [saving,setSaving]=useState(false);
-  const [loadingData,setLoadingData]=useState(true);
-  const emptyForm={date:today(),symbol:"USDT",quantity:"",unit_cost:"",currency:"COP",supplier:"",pay_method:"transferencia",notes:""};
-  const [form,setForm]=useState(emptyForm);
-  const f=k=>v=>setForm(p=>({...p,[k]:v}));
-
-  useEffect(()=>{
-    Promise.all([cryptoApi.getCryptoPurchases(),cryptoApi.getInventory()])
-      .then(([p,i])=>{setPurchases(p);setInventory(i);})
-      .catch(e=>toast(e.message,"error"))
-      .finally(()=>setLoadingData(false));
-  },[]);
-
-  const totalInvested=purchases.reduce((a,p)=>a+p.total,0);
-  const totalQtyBySymbol=purchases.reduce((a,p)=>{a[p.symbol]=(a[p.symbol]||0)+p.quantity;return a;},{});
+  const filtered=purchases.filter(p=>inPeriod(p.date,period,from,to));
+  const totalCOP=filtered.reduce((a,p)=>a+p.total,0);
+  const qtyBySym={};filtered.forEach(p=>qtyBySym[p.symbol]=(qtyBySym[p.symbol]||0)+ +p.quantity);
 
   const save=async()=>{
     if(!form.quantity||!form.unit_cost){toast("Completa cantidad y precio","error");return;}
     setSaving(true);
     try{
-      const p=await cryptoApi.addCryptoPurchase(form);
-      setPurchases(prev=>[p,...prev]);
-      // Refrescar inventario
-      const inv=await cryptoApi.getInventory();
-      setInventory(inv);
-      setModal(false);setForm(emptyForm);
-      toast(`Compra de ${form.quantity} ${form.symbol} registrada`);
+      await api.addPurchase(form);
+      await reload();
+      setModal(false);setForm(empty);
+      toast(`Compra de ${fmtQ(form.quantity,form.symbol)} ${form.symbol} registrada`);
     }catch(e){toast(e.message,"error");}
     finally{setSaving(false);}
   };
 
+  const curInv=inventory.find(i=>i.symbol===form.symbol);
+
   const cols=[
     {key:"date",label:"Fecha"},
-    {key:"symbol",label:"Moneda",render:v=>React.createElement("span",{style:{color:COIN_COLORS[v]||C.accent,fontWeight:700,fontFamily:"monospace"}},v)},
-    {key:"quantity",label:"Cantidad",render:(v,r)=>React.createElement("span",{style:{fontFamily:"monospace"}},fmtCrypto(v,r.symbol))},
+    {key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
+    {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
     {key:"unit_cost",label:"Precio Unit.",render:v=>fmt(v)},
-    {key:"total",label:"Total",render:v=>React.createElement("b",null,fmt(v))},
+    {key:"total",label:"Total",render:v=><b>{fmt(v)}</b>},
     {key:"supplier",label:"Proveedor"},
     {key:"pay_method",label:"Método"},
     {key:"notes",label:"Notas"},
   ];
 
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Compras de Criptomonedas",sub:`${purchases.length} operaciones`,action:"Nueva Compra",onAction:()=>setModal(true)}),
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <Head title="Compras de Criptomonedas" sub={`${purchases.length} operaciones totales`} action="Nueva Compra" onAction={()=>setModal(true)}/>
+    <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+      <Stat label="Invertido (período)" value={fmtK(totalCOP)} accent={C.amber}/>
+      <Stat label="Operaciones" value={filtered.length}/>
+      {Object.entries(qtyBySym).slice(0,2).map(([s,q])=><Stat key={s} label={`${s} comprado`} value={fmtQ(q,s)} accent={COIN_C[s]}/>)}
+    </div>
+    <div style={{display:"flex",justifyContent:"flex-end"}}>
+      <Btn small variant="secondary" onClick={()=>exportCSV(
+        ["Fecha","Moneda","Cantidad","Precio Unit","Total","Proveedor","Método","Notas"],
+        filtered.map(p=>[p.date,p.symbol,p.quantity,p.unit_cost,p.total,p.supplier||"",p.pay_method||"",p.notes||""]),
+        `compras-crypto-${today()}.csv`)}>📥 Exportar Excel</Btn>
+    </div>
+    <Tabla cols={cols} rows={filtered} emptyMsg="No hay compras en este período"/>
 
-    // KPIs
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Total Invertido",value:fmtK(totalInvested),accent:C.amber}),
-      React.createElement(StatCard,{label:"Operaciones",value:purchases.length}),
-      ...Object.entries(totalQtyBySymbol).slice(0,3).map(([sym,qty])=>
-        React.createElement(StatCard,{key:sym,label:`${sym} Comprado`,value:fmtCrypto(qty,sym),accent:COIN_COLORS[sym]||C.accent})
-      )
-    ),
-
-    // Inventario resumen
-    inventory.filter(i=>i.quantity>0).length>0&&React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16}},
-      React.createElement("h4",{style:{margin:"0 0 12px",color:C.text,fontSize:14,fontWeight:600}},"Posición actual (Costo Promedio Ponderado)"),
-      React.createElement("div",{style:{display:"flex",gap:10,flexWrap:"wrap"}},
-        inventory.filter(i=>i.quantity>0).map(i=>
-          React.createElement("div",{key:i.symbol,style:{background:C.card2,border:`1px solid ${COIN_COLORS[i.symbol]||C.border}`,borderRadius:10,padding:"10px 14px",minWidth:140}},
-            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:6}},
-              React.createElement("span",{style:{width:8,height:8,borderRadius:"50%",background:COIN_COLORS[i.symbol]||C.accent,display:"inline-block"}}),
-              React.createElement("b",{style:{color:C.text,fontSize:13}},i.symbol)
-            ),
-            React.createElement("div",{style:{fontSize:16,fontWeight:700,color:COIN_COLORS[i.symbol]||C.accent,fontFamily:"monospace"}},fmtCrypto(i.quantity,i.symbol)),
-            React.createElement("div",{style:{fontSize:11,color:C.muted,marginTop:2}},`CPP: ${fmt(i.avg_cost)}`),
-            React.createElement("div",{style:{fontSize:11,color:C.amber}},`Invertido: ${fmt(i.total_invested)}`)
-          )
-        )
-      )
-    ),
-
-    loadingData
-      ? React.createElement("div",{style:{padding:40,textAlign:"center",color:C.muted}},"Cargando...")
-      : React.createElement(Table,{cols,rows:purchases,emptyMsg:"No hay compras registradas"}),
-
-    modal&&React.createElement(Modal,{title:"Nueva Compra de Criptomoneda",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Fecha",type:"date",value:form.date,onChange:f("date")}),
-          React.createElement(Sel,{label:"Moneda",value:form.symbol,onChange:f("symbol"),options:COINS.map(c=>({value:c,label:c}))})
-        ),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Cantidad",type:"number",value:form.quantity,onChange:f("quantity"),placeholder:"Ej: 100"}),
-          React.createElement(Inp,{label:"Precio unitario (COP)",type:"number",value:form.unit_cost,onChange:f("unit_cost"),placeholder:"Ej: 4150"})
-        ),
-        form.quantity&&form.unit_cost&&React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:12,display:"flex",gap:16}},
-          React.createElement("span",{style:{fontSize:13,color:C.muted}},"Total a pagar: ",React.createElement("b",{style:{color:C.amber}},fmt(+form.quantity*+form.unit_cost))),
-          inventory.find(i=>i.symbol===form.symbol)&&React.createElement("span",{style:{fontSize:13,color:C.muted}},
-            "CPP actual: ",React.createElement("b",{style:{color:C.text}},fmt(inventory.find(i=>i.symbol===form.symbol)?.avg_cost||0))
-          )
-        ),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Proveedor",value:form.supplier,onChange:f("supplier"),placeholder:"Nombre o alias"}),
-          React.createElement(Sel,{label:"Método de pago",value:form.pay_method,onChange:f("pay_method"),options:["transferencia","efectivo","nequi","daviplata","cripto"].map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))})
-        ),
-        React.createElement(Inp,{label:"Notas",value:form.notes,onChange:f("notes")}),
-        React.createElement("div",{style:{background:"#0D2B1D",border:`1px solid ${C.green}`,borderRadius:8,padding:10}},
-          React.createElement("p",{style:{margin:0,fontSize:11,color:C.green}},"✓ Se actualizará el costo promedio ponderado, inventario y flujo de caja automáticamente.")
-        ),
-        React.createElement(Btn,{onClick:save,disabled:saving,full:true},saving?"Procesando...":"Registrar Compra")
-      )
-    )
-  );
+    {modal&&<Modal title="Nueva Compra" onClose={()=>{setModal(false);setForm(empty);}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
+          <Sel label="Moneda" value={form.symbol} onChange={f("symbol")} options={COINS.map(c=>({value:c,label:c}))}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp label="Cantidad" type="number" value={form.quantity} onChange={f("quantity")} placeholder="Ej: 30000"/>
+          <Inp label="Precio unitario COP" type="number" value={form.unit_cost} onChange={f("unit_cost")} placeholder="Ej: 3500"/>
+        </div>
+        {form.quantity&&form.unit_cost&&<div style={{background:C.panel,borderRadius:8,padding:12,display:"flex",gap:14,flexWrap:"wrap"}}>
+          <span style={{fontSize:13,color:C.muted}}>Total: <b style={{color:C.amber}}>{fmt(+form.quantity*+form.unit_cost)}</b></span>
+          {curInv&&+curInv.quantity>0&&<span style={{fontSize:13,color:C.muted}}>CPP nuevo: <b style={{color:C.text}}>{fmt((+curInv.quantity*+curInv.avg_cost + +form.quantity*+form.unit_cost)/(+curInv.quantity + +form.quantity))}</b></span>}
+        </div>}
+        <Inp label="Proveedor" value={form.supplier} onChange={f("supplier")} list="suppliers-dl" placeholder="Nombre o alias"/>
+        <datalist id="suppliers-dl">{suppliers.map(s=><option key={s.id} value={s.name}/>)}</datalist>
+        <Sel label="Método de pago" value={form.pay_method} onChange={f("pay_method")} options={["transferencia","efectivo","nequi","daviplata","binance pay","cripto"].map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+        <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
+        <Btn onClick={save} disabled={saving} full>{saving?"Procesando...":"Registrar Compra"}</Btn>
+      </div>
+    </Modal>}
+  </div>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MÓDULO: VENTAS CRYPTO
-// ═══════════════════════════════════════════════════════════════════════════
-function CryptoSalesModule({clients,toast}){
-  const [sales,setSales]=useState([]);
-  const [inventory,setInventory]=useState([]);
-  const [modal,setModal]=useState(false);
-  const [saving,setSaving]=useState(false);
-  const [loadingData,setLoadingData]=useState(true);
-  const [filterSym,setFilterSym]=useState("all");
-  const emptyForm={date:today(),symbol:"USDT",quantity:"",unit_price:"",currency:"COP",client:"",pay_method:"transferencia",notes:""};
-  const [form,setForm]=useState(emptyForm);
+// ─── VENTAS CRYPTO ────────────────────────────────────────────────────────
+function SalesModule({sales,inventory,clients,reload,toast}){
+  const[modal,setModal]=useState(false);
+  const[saving,setSaving]=useState(false);
+  const[period,setPeriod]=useState("month");
+  const[from,setFrom]=useState("");const[to,setTo]=useState("");
+  const[filterSym,setFilterSym]=useState("all");
+  const empty={date:today(),symbol:"USDT",quantity:"",unit_price:"",client:"",pay_method:"transferencia",notes:""};
+  const[form,setForm]=useState(empty);
   const f=k=>v=>setForm(p=>({...p,[k]:v}));
 
-  const load=async()=>{
-    const [s,i]=await Promise.all([cryptoApi.getCryptoSales(),cryptoApi.getInventory()]);
-    setSales(s);setInventory(i);
-  };
+  const filtered=sales.filter(s=>inPeriod(s.date,period,from,to)&&(filterSym==="all"||s.symbol===filterSym));
+  const rev=filtered.reduce((a,s)=>a+s.total,0);
+  const cogs=filtered.reduce((a,s)=>a+(+s.cogs||0),0);
+  const profit=filtered.reduce((a,s)=>a+(+s.gross_profit||0),0);
 
-  useEffect(()=>{load().catch(e=>toast(e.message,"error")).finally(()=>setLoadingData(false));}, []);
-
-  const filtered=filterSym==="all"?sales:sales.filter(s=>s.symbol===filterSym);
-  const totalRevenue=filtered.reduce((a,s)=>a+s.total,0);
-  const totalProfit =filtered.reduce((a,s)=>a+s.gross_profit,0);
-  const totalCogs   =filtered.reduce((a,s)=>a+s.cogs,0);
-
-  const currentInv=inventory.find(i=>i.symbol===form.symbol);
-  const estimatedProfit=currentInv&&form.quantity&&form.unit_price
-    ? (+form.quantity*+form.unit_price)-(+form.quantity*currentInv.avg_cost)
-    : null;
+  const curInv=inventory.find(i=>i.symbol===form.symbol);
+  const estProfit=curInv&&form.quantity&&form.unit_price?(+form.quantity*+form.unit_price)-(+form.quantity*+curInv.avg_cost):null;
 
   const save=async()=>{
     if(!form.quantity||!form.unit_price){toast("Completa cantidad y precio","error");return;}
-    if(!currentInv||currentInv.quantity<+form.quantity){
-      toast(`Inventario insuficiente. Disponible: ${fmtCrypto(currentInv?.quantity||0,form.symbol)} ${form.symbol}`,"error");
-      return;
+    if(!curInv||+curInv.quantity<+form.quantity){
+      toast(`Inventario insuficiente. Disponible: ${fmtQ(curInv?.quantity||0,form.symbol)} ${form.symbol}`,"error");return;
     }
     setSaving(true);
     try{
-      const s=await cryptoApi.addCryptoSale(form);
-      setSales(prev=>[s,...prev]);
-      await load();
-      setModal(false);setForm(emptyForm);
-      toast(`Venta de ${form.quantity} ${form.symbol} registrada. Utilidad: ${fmt(s.gross_profit||0)}`);
+      const r=await api.addSale(form);
+      await reload();
+      setModal(false);setForm(empty);
+      toast(`Venta registrada · Utilidad: ${fmt(r.gross_profit||0)}`);
     }catch(e){toast(e.message,"error");}
     finally{setSaving(false);}
   };
 
+  const symbols=["all",...new Set(sales.map(s=>s.symbol))];
+
   const cols=[
     {key:"date",label:"Fecha"},
-    {key:"symbol",label:"Moneda",render:v=>React.createElement("span",{style:{color:COIN_COLORS[v]||C.accent,fontWeight:700,fontFamily:"monospace"}},v)},
-    {key:"quantity",label:"Cantidad",render:(v,r)=>React.createElement("span",{style:{fontFamily:"monospace"}},fmtCrypto(v,r.symbol))},
-    {key:"unit_price",label:"Precio Venta",render:v=>fmt(v)},
-    {key:"avg_cost_used",label:"CPP Usado",render:v=>React.createElement("span",{style:{color:C.muted}},fmt(v))},
+    {key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
+    {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
+    {key:"unit_price",label:"P. Venta",render:v=>fmt(v)},
+    {key:"avg_cost_used",label:"CPP",render:v=><span style={{color:C.muted}}>{fmt(v)}</span>},
     {key:"total",label:"Ingreso",render:v=>fmt(v)},
-    {key:"cogs",label:"Costo",render:v=>React.createElement("span",{style:{color:C.rose}},fmt(v))},
-    {key:"gross_profit",label:"Utilidad",render:v=>React.createElement("b",{style:{color:v>=0?C.green:C.rose}},fmt(v))},
+    {key:"gross_profit",label:"Utilidad",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmt(v)}</b>},
     {key:"client",label:"Cliente"},
     {key:"pay_method",label:"Método"},
   ];
 
-  const symbols=["all",...new Set(sales.map(s=>s.symbol))];
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <Head title="Ventas de Criptomonedas" sub={`${sales.length} operaciones totales`} action="Nueva Venta" onAction={()=>setModal(true)}/>
+    <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {symbols.map(s=><Pill key={s} label={s==="all"?"Todas":s} active={filterSym===s} onClick={()=>setFilterSym(s)}/>)}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+      <Stat label="Ingresos" value={fmtK(rev)} accent={C.blue}/>
+      <Stat label="Costo (CPP)" value={fmtK(cogs)} accent={C.rose}/>
+      <Stat label="Utilidad" value={fmtK(profit)} accent={C.green}/>
+      <Stat label="Margen" value={`${rev>0?((profit/rev)*100).toFixed(2):0}%`} accent={C.accentL}/>
+    </div>
+    <div style={{display:"flex",justifyContent:"flex-end"}}>
+      <Btn small variant="secondary" onClick={()=>exportCSV(
+        ["Fecha","Moneda","Cantidad","Precio Venta","CPP","Ingreso","Costo","Utilidad","Cliente","Método","Notas"],
+        filtered.map(s=>[s.date,s.symbol,s.quantity,s.unit_price,s.avg_cost_used,s.total,s.cogs,s.gross_profit,s.client||"",s.pay_method||"",s.notes||""]),
+        `ventas-crypto-${today()}.csv`)}>📥 Exportar Excel</Btn>
+    </div>
+    <Tabla cols={cols} rows={filtered} emptyMsg="No hay ventas en este período"/>
 
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Ventas de Criptomonedas",sub:`${sales.length} operaciones`,action:"Nueva Venta",onAction:()=>setModal(true)}),
-
-    // KPIs
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Total Ingresos",value:fmtK(totalRevenue),accent:C.accent}),
-      React.createElement(StatCard,{label:"Costo Vendido",value:fmtK(totalCogs),accent:C.rose}),
-      React.createElement(StatCard,{label:"Utilidad Bruta",value:fmtK(totalProfit),accent:C.green}),
-      React.createElement(StatCard,{label:"Margen",value:`${totalRevenue>0?((totalProfit/totalRevenue)*100).toFixed(1):0}%`,accent:C.accentL})
-    ),
-
-    // Filtros por moneda
-    React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-      symbols.map(sym=>React.createElement(FilterPill,{key:sym,label:sym==="all"?"Todas":sym,active:filterSym===sym,onClick:()=>setFilterSym(sym)}))
-    ),
-
-    loadingData
-      ? React.createElement("div",{style:{padding:40,textAlign:"center",color:C.muted}},"Cargando...")
-      : React.createElement(Table,{cols,rows:filtered,emptyMsg:"No hay ventas registradas"}),
-
-    modal&&React.createElement(Modal,{title:"Nueva Venta de Criptomoneda",onClose:()=>{setModal(false);setForm(emptyForm);}},
-      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:12}},
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Fecha",type:"date",value:form.date,onChange:f("date")}),
-          React.createElement(Sel,{label:"Moneda",value:form.symbol,onChange:f("symbol"),options:inventory.filter(i=>i.quantity>0).map(i=>({value:i.symbol,label:`${i.symbol} (${fmtCrypto(i.quantity,i.symbol)} disp.)`}))})
-        ),
-        // Mostrar CPP actual
-        currentInv&&React.createElement("div",{style:{background:C.panel,borderRadius:8,padding:10,display:"flex",gap:16,flexWrap:"wrap"}},
-          React.createElement("span",{style:{fontSize:12,color:C.muted}},"Disponible: ",React.createElement("b",{style:{color:COIN_COLORS[form.symbol]||C.accent}},`${fmtCrypto(currentInv.quantity,form.symbol)} ${form.symbol}`)),
-          React.createElement("span",{style:{fontSize:12,color:C.muted}},"CPP: ",React.createElement("b",{style:{color:C.text}},fmt(currentInv.avg_cost))),
-          React.createElement("span",{style:{fontSize:12,color:C.muted}},"Invertido: ",React.createElement("b",{style:{color:C.amber}},fmt(currentInv.total_invested)))
-        ),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Cantidad a vender",type:"number",value:form.quantity,onChange:f("quantity"),placeholder:"Ej: 50"}),
-          React.createElement(Inp,{label:"Precio unitario (COP)",type:"number",value:form.unit_price,onChange:f("unit_price"),placeholder:"Ej: 4180"})
-        ),
-        // Preview de utilidad en tiempo real
-        estimatedProfit!==null&&React.createElement("div",{style:{background:estimatedProfit>=0?"#0D2B1D":"#2D1218",border:`1px solid ${estimatedProfit>=0?C.green:C.rose}`,borderRadius:8,padding:12}},
-          React.createElement("div",{style:{display:"flex",gap:16,flexWrap:"wrap"}},
-            React.createElement("span",{style:{fontSize:13,color:C.muted}},"Ingreso: ",React.createElement("b",{style:{color:C.text}},fmt(+form.quantity*+form.unit_price))),
-            React.createElement("span",{style:{fontSize:13,color:C.muted}},"Costo: ",React.createElement("b",{style:{color:C.rose}},fmt(+form.quantity*(currentInv?.avg_cost||0)))),
-            React.createElement("span",{style:{fontSize:13,color:C.muted}},"Utilidad estimada: ",React.createElement("b",{style:{color:estimatedProfit>=0?C.green:C.rose,fontSize:15}},fmt(estimatedProfit)))
-          )
-        ),
-        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
-          React.createElement(Inp,{label:"Cliente",value:form.client,onChange:f("client"),placeholder:"Nombre o alias"}),
-          React.createElement(Sel,{label:"Método de pago",value:form.pay_method,onChange:f("pay_method"),options:["transferencia","efectivo","nequi","daviplata","cripto"].map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))})
-        ),
-        React.createElement(Inp,{label:"Notas",value:form.notes,onChange:f("notes")}),
-        React.createElement("div",{style:{background:"#0D2B1D",border:`1px solid ${C.green}`,borderRadius:8,padding:10}},
-          React.createElement("p",{style:{margin:0,fontSize:11,color:C.green}},"✓ La utilidad se calcula automáticamente usando el Costo Promedio Ponderado. Se actualiza inventario y flujo de caja.")
-        ),
-        React.createElement(Btn,{onClick:save,disabled:saving,full:true},saving?"Procesando...":"Registrar Venta")
-      )
-    )
-  );
+    {modal&&<Modal title="Nueva Venta" onClose={()=>{setModal(false);setForm(empty);}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
+          <Sel label="Moneda" value={form.symbol} onChange={f("symbol")} options={
+            inventory.filter(i=>+i.quantity>0).length>0
+              ? inventory.filter(i=>+i.quantity>0).map(i=>({value:i.symbol,label:`${i.symbol} · ${fmtQ(i.quantity,i.symbol)} disp.`}))
+              : [{value:"USDT",label:"USDT (sin inventario)"}]
+          }/>
+        </div>
+        {curInv&&<div style={{background:C.panel,borderRadius:8,padding:10,display:"flex",gap:14,flexWrap:"wrap"}}>
+          <span style={{fontSize:12,color:C.muted}}>Disponible: <b style={{color:COIN_C[form.symbol]}}>{fmtQ(curInv.quantity,form.symbol)}</b></span>
+          <span style={{fontSize:12,color:C.muted}}>CPP: <b style={{color:C.text}}>{fmt(curInv.avg_cost)}</b></span>
+        </div>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp label="Cantidad a vender" type="number" value={form.quantity} onChange={f("quantity")} placeholder="Ej: 10000"/>
+          <Inp label="Precio unitario COP" type="number" value={form.unit_price} onChange={f("unit_price")} placeholder="Ej: 3580"/>
+        </div>
+        {estProfit!==null&&<div style={{background:estProfit>=0?"#0D2B1D":"#2D1218",border:`1px solid ${estProfit>=0?C.green:C.rose}`,borderRadius:8,padding:12,display:"flex",gap:14,flexWrap:"wrap"}}>
+          <span style={{fontSize:13,color:C.muted}}>Ingreso: <b style={{color:C.text}}>{fmt(+form.quantity*+form.unit_price)}</b></span>
+          <span style={{fontSize:13,color:C.muted}}>Costo: <b style={{color:C.rose}}>{fmt(+form.quantity*+curInv.avg_cost)}</b></span>
+          <span style={{fontSize:13,color:C.muted}}>Utilidad: <b style={{color:estProfit>=0?C.green:C.rose,fontSize:15}}>{fmt(estProfit)}</b></span>
+        </div>}
+        <Inp label="Cliente" value={form.client} onChange={f("client")} list="clients-dl" placeholder="Nombre o alias"/>
+        <datalist id="clients-dl">{clients.map(c=><option key={c.id} value={c.name}/>)}</datalist>
+        <Sel label="Método de pago" value={form.pay_method} onChange={f("pay_method")} options={["transferencia","efectivo","nequi","daviplata","binance pay","cripto"].map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+        <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
+        <Btn onClick={save} disabled={saving} full>{saving?"Procesando...":"Registrar Venta"}</Btn>
+      </div>
+    </Modal>}
+  </div>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MÓDULO: INVENTARIO CRYPTO (kardex + posición actual)
-// ═══════════════════════════════════════════════════════════════════════════
-function CryptoInventoryModule({toast}){
-  const [inventory,setInventory]=useState([]);
-  const [kardex,setKardex]=useState([]);
-  const [filterSym,setFilterSym]=useState("all");
-  const [tab,setTab]=useState("inventory");
-  const [loading,setLoading]=useState(true);
+// ─── INVENTARIO CRYPTO ────────────────────────────────────────────────────
+function InventoryModule({inventory,kardex}){
+  const[tab,setTab]=useState("pos");
+  const[filterSym,setFilterSym]=useState("all");
+  const totalInv=inventory.reduce((a,i)=>a+(+i.total_invested||0),0);
+  const totalProfit=inventory.reduce((a,i)=>a+(+i.accumulated_profit||0),0);
+  const fk=filterSym==="all"?kardex:kardex.filter(k=>k.symbol===filterSym);
 
-  useEffect(()=>{
-    Promise.all([cryptoApi.getInventory(),cryptoApi.getKardex()])
-      .then(([i,k])=>{setInventory(i);setKardex(k);})
-      .catch(e=>toast(e.message,"error"))
-      .finally(()=>setLoading(false));
-  },[]);
-
-  const filteredKardex=filterSym==="all"?kardex:kardex.filter(k=>k.symbol===filterSym);
-  const totalInvested=inventory.reduce((a,i)=>a+i.total_invested,0);
-  const totalProfit  =inventory.reduce((a,i)=>a+i.accumulated_profit,0);
-
-  const invCols=[
-    {key:"symbol",label:"Moneda",render:v=>React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},
-      React.createElement("span",{style:{width:10,height:10,borderRadius:"50%",background:COIN_COLORS[v]||C.accent,display:"inline-block"}}),
-      React.createElement("b",{style:{color:C.text,fontFamily:"monospace"}},v)
-    )},
-    {key:"quantity",label:"Cantidad",render:(v,r)=>React.createElement("span",{style:{fontFamily:"monospace",color:C.text}},fmtCrypto(v,r.symbol))},
-    {key:"avg_cost",label:"Costo Prom.",render:v=>fmt(v)},
-    {key:"total_invested",label:"Total Invertido",render:v=>React.createElement("span",{style:{color:C.amber,fontWeight:600}},fmt(v))},
-    {key:"total_bought",label:"Total Comprado",render:v=>fmt(v)},
-    {key:"accumulated_profit",label:"Utilidad Acum.",render:v=>React.createElement("b",{style:{color:v>=0?C.green:C.rose}},fmt(v))},
-    {key:"roi_pct",label:"ROI",render:v=>React.createElement("span",{style:{color:v>=0?C.green:C.rose,fontWeight:600}},`${v}%`)},
+  const posCols=[
+    {key:"symbol",label:"Moneda",render:v=><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:9,height:9,borderRadius:"50%",background:COIN_C[v]||C.accent}}/><b style={{fontFamily:"monospace"}}>{v}</b></div>},
+    {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace",color:+v>0?C.text:C.muted}}>{fmtQ(v,r.symbol)}</span>},
+    {key:"avg_cost",label:"Costo Promedio",render:v=>fmt(v)},
+    {key:"total_invested",label:"Invertido",render:v=><span style={{color:C.amber,fontWeight:600}}>{fmt(v)}</span>},
+    {key:"total_bought",label:"Comprado Hist.",render:(v,r)=>fmtQ(v,r.symbol)},
+    {key:"total_sold",label:"Vendido Hist.",render:(v,r)=>fmtQ(v,r.symbol)},
+    {key:"accumulated_profit",label:"Utilidad Acum.",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmt(v)}</b>},
+    {key:"roi_pct",label:"ROI",render:v=><span style={{color:v>=0?C.green:C.rose,fontWeight:600}}>{v}%</span>},
   ];
 
-  const kardexCols=[
+  const kCols=[
     {key:"date",label:"Fecha"},
-    {key:"symbol",label:"Moneda",render:v=>React.createElement("span",{style:{color:COIN_COLORS[v]||C.accent,fontWeight:700,fontFamily:"monospace"}},v)},
-    {key:"type",label:"Tipo",render:v=>React.createElement("span",{style:{color:v==="compra"?C.green:v==="venta"?C.rose:C.amber,fontWeight:600,textTransform:"uppercase",fontSize:11}},v)},
-    {key:"quantity",label:"Cantidad",render:(v,r)=>React.createElement("span",{style:{color:v>=0?C.green:C.rose,fontFamily:"monospace"}},`${v>=0?"+":""}${fmtCrypto(Math.abs(v),r.symbol)}`)},
-    {key:"unit_cost",label:"Costo Unit.",render:v=>fmt(v)},
+    {key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
+    {key:"type",label:"Tipo",render:v=><span style={{color:v==="compra"?C.green:v==="venta"?C.rose:C.amber,fontWeight:700,fontSize:11,textTransform:"uppercase"}}>{v}</span>},
+    {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{color:v>=0?C.green:C.rose,fontFamily:"monospace"}}>{v>=0?"+":""}{fmtQ(Math.abs(v),r.symbol)}</span>},
+    {key:"unit_cost",label:"Precio",render:v=>fmt(v)},
     {key:"total",label:"Total",render:v=>fmt(v)},
-    {key:"balance_qty",label:"Saldo Cant.",render:(v,r)=>React.createElement("span",{style:{fontFamily:"monospace"}},fmtCrypto(v,r.symbol))},
-    {key:"balance_avg",label:"Saldo CPP",render:v=>fmt(v)},
+    {key:"balance_qty",label:"Saldo",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
+    {key:"balance_avg",label:"CPP Saldo",render:v=>fmt(v)},
   ];
 
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Inventario Criptomonedas"}),
-
-    // KPIs
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Capital Invertido",value:fmtK(totalInvested),accent:C.amber}),
-      React.createElement(StatCard,{label:"Utilidad Acumulada",value:fmtK(totalProfit),accent:C.green}),
-      React.createElement(StatCard,{label:"ROI General",value:`${totalInvested>0?((totalProfit/totalInvested)*100).toFixed(1):0}%`,accent:C.accentL}),
-      React.createElement(StatCard,{label:"Monedas en Posición",value:inventory.filter(i=>i.quantity>0).length})
-    ),
-
-    // Tabs
-    React.createElement("div",{style:{display:"flex",gap:6}},
-      [["inventory","📦 Posición Actual"],["kardex","📋 Kardex de Movimientos"]].map(([t,l])=>
-        React.createElement(FilterPill,{key:t,label:l,active:tab===t,onClick:()=>setTab(t)})
-      )
-    ),
-
-    tab==="kardex"&&React.createElement("div",{style:{display:"flex",gap:6,flexWrap:"wrap"}},
-      ["all",...COINS].filter(s=>s==="all"||kardex.some(k=>k.symbol===s)).map(sym=>
-        React.createElement(FilterPill,{key:sym,label:sym==="all"?"Todas":sym,active:filterSym===sym,onClick:()=>setFilterSym(sym)})
-      )
-    ),
-
-    loading
-      ? React.createElement("div",{style:{padding:40,textAlign:"center",color:C.muted}},"Cargando...")
-      : tab==="inventory"
-        ? React.createElement(Table,{cols:invCols,rows:inventory,emptyMsg:"Sin posiciones abiertas"})
-        : React.createElement(Table,{cols:kardexCols,rows:filteredKardex,emptyMsg:"Sin movimientos registrados"})
-  );
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <Head title="Inventario Crypto"/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+      <Stat label="Capital en Posición" value={fmtK(totalInv)} accent={C.amber}/>
+      <Stat label="Utilidad Acumulada" value={fmtK(totalProfit)} accent={C.green}/>
+      <Stat label="ROI General" value={`${totalInv>0?((totalProfit/totalInv)*100).toFixed(1):0}%`} accent={C.accentL}/>
+      <Stat label="Monedas Activas" value={inventory.filter(i=>+i.quantity>0).length}/>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <Pill label="📦 Posición" active={tab==="pos"} onClick={()=>setTab("pos")}/>
+      <Pill label="📋 Kardex" active={tab==="kdx"} onClick={()=>setTab("kdx")}/>
+    </div>
+    {tab==="kdx"&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      {["all",...new Set(kardex.map(k=>k.symbol))].map(s=><Pill key={s} label={s==="all"?"Todas":s} active={filterSym===s} onClick={()=>setFilterSym(s)}/>)}
+    </div>}
+    {tab==="pos"
+      ?<Tabla cols={posCols} rows={inventory} emptyMsg="Sin posiciones — registra tu primera compra"/>
+      :<>
+        <div style={{display:"flex",justifyContent:"flex-end"}}>
+          <Btn small variant="secondary" onClick={()=>exportCSV(
+            ["Fecha","Moneda","Tipo","Cantidad","Precio","Total","Saldo Cant","CPP Saldo"],
+            fk.map(k=>[k.date,k.symbol,k.type,k.quantity,k.unit_cost,k.total,k.balance_qty,k.balance_avg]),
+            `kardex-${today()}.csv`)}>📥 Exportar Excel</Btn>
+        </div>
+        <Tabla cols={kCols} rows={fk} emptyMsg="Sin movimientos"/>
+      </>}
+  </div>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MÓDULO: GANANCIAS CRYPTO (Reportes de rentabilidad)
-// ═══════════════════════════════════════════════════════════════════════════
-function CryptoProfitModule({toast}){
-  const [sales,setSales]=useState([]);
-  const [inventory,setInventory]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [groupBy,setGroupBy]=useState("symbol");
+// ─── CLIENTES + LIBRO MAYOR ───────────────────────────────────────────────
+function clientLedger(client, sales, purchases){
+  const n=norm(client.name);
+  const ventas=sales.filter(s=>norm(s.client)===n).map(s=>({
+    id:"v"+s.id,date:s.date,type:"venta",symbol:s.symbol,qty:+s.quantity,
+    price:+s.unit_price,total:+s.total,profit:+s.gross_profit||0,method:s.pay_method,notes:s.notes
+  }));
+  const compras=purchases.filter(p=>norm(p.supplier)===n).map(p=>({
+    id:"c"+p.id,date:p.date,type:"compra",symbol:p.symbol,qty:+p.quantity,
+    price:+p.unit_cost,total:+p.total,profit:0,method:p.pay_method,notes:p.notes
+  }));
+  const ops=[...ventas,...compras].sort((a,b)=>b.date.localeCompare(a.date));
+  const volCOP=ops.reduce((a,o)=>a+o.total,0);
+  const volBySym={};ops.forEach(o=>volBySym[o.symbol]=(volBySym[o.symbol]||0)+o.qty);
+  const profit=ventas.reduce((a,o)=>a+o.profit,0);
+  const dates=ops.map(o=>o.date).sort();
+  return {ops,ventas,compras,volCOP,volBySym,profit,first:dates[0]||null,last:dates[dates.length-1]||null};
+}
 
-  useEffect(()=>{
-    Promise.all([cryptoApi.getCryptoSales(),cryptoApi.getInventory()])
-      .then(([s,i])=>{setSales(s);setInventory(i);})
-      .catch(e=>toast(e.message,"error"))
-      .finally(()=>setLoading(false));
-  },[]);
+function ClientsModule({clients,sales,purchases,reload,toast}){
+  const[search,setSearch]=useState("");
+  const[sortBy,setSortBy]=useState("profit");
+  const[modal,setModal]=useState(false);
+  const[detail,setDetail]=useState(null);
+  const empty={name:"",phone:"",city:"",address:"",notes:""};
+  const[form,setForm]=useState(empty);
+  const f=k=>v=>setForm(p=>({...p,[k]:v}));
 
-  const todayStr=today();
-  const monthStr=todayStr.slice(0,7);
+  const enriched=useMemo(()=>clients.map(c=>{
+    const l=clientLedger(c,sales,purchases);
+    return {...c,_ops:l.ops.length,_vol:l.volCOP,_profit:l.profit,_usdt:l.volBySym.USDT||0,_last:l.last};
+  }),[clients,sales,purchases]);
 
-  const todaySales =sales.filter(s=>s.date===todayStr);
-  const monthSales =sales.filter(s=>s.date.startsWith(monthStr));
+  const filtered=enriched
+    .filter(c=>norm(c.name).includes(norm(search))||norm(c.city).includes(norm(search))||norm(c.phone).includes(norm(search)))
+    .sort((a,b)=>sortBy==="profit"?b._profit-a._profit:sortBy==="vol"?b._vol-a._vol:sortBy==="ops"?b._ops-a._ops:a.name.localeCompare(b.name));
 
-  const profitBySymbol=COINS.map(sym=>({
-    symbol:sym,
-    revenue: sales.filter(s=>s.symbol===sym).reduce((a,s)=>a+s.total,0),
-    cogs:    sales.filter(s=>s.symbol===sym).reduce((a,s)=>a+s.cogs,0),
-    profit:  sales.filter(s=>s.symbol===sym).reduce((a,s)=>a+s.gross_profit,0),
-    ops:     sales.filter(s=>s.symbol===sym).length,
+  const save=async()=>{
+    if(!form.name){toast("El nombre es requerido","error");return;}
+    try{
+      await api.addClient(form);await reload();
+      setModal(false);setForm(empty);toast("Cliente creado");
+    }catch(e){toast(e.message,"error");}
+  };
+
+  const cols=[
+    {key:"name",label:"Cliente",render:(v,r,i)=><b>{v}</b>},
+    {key:"phone",label:"Teléfono"},
+    {key:"_ops",label:"Ops",render:v=><span style={{fontFamily:"monospace"}}>{v}</span>},
+    {key:"_vol",label:"Volumen COP",render:v=><span style={{color:C.blue,fontWeight:600}}>{fmtK(v)}</span>},
+    {key:"_usdt",label:"Vol. USDT",render:v=><span style={{color:COIN_C.USDT,fontFamily:"monospace"}}>{fmtQ(v,"USDT")}</span>},
+    {key:"_profit",label:"Utilidad",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmtK(v)}</b>},
+    {key:"_last",label:"Última Op."},
+    {key:"wa",label:"",render:(_,r)=><button onClick={e=>{e.stopPropagation();window.open(`https://wa.me/57${(r.phone||"").replace(/[-\s]/g,"")}`,"_blank");}} style={{fontSize:11,background:"#0D2B1D",border:`1px solid ${C.green}`,color:C.green,borderRadius:6,padding:"3px 10px",cursor:"pointer",fontWeight:600}}>WA</button>},
+  ];
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <Head title="Clientes" sub={`${clients.length} registrados · ranking por rentabilidad`} action="Nuevo Cliente" onAction={()=>setModal(true)}/>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <Search value={search} onChange={setSearch} placeholder="Buscar nombre, ciudad o teléfono..."/>
+      <div style={{display:"flex",gap:6}}>
+        {[["profit","Más rentables"],["vol","Más volumen"],["ops","Más activos"],["name","A-Z"]].map(([v,l])=>
+          <Pill key={v} label={l} active={sortBy===v} onClick={()=>setSortBy(v)}/>)}
+      </div>
+    </div>
+    <Tabla cols={cols} rows={filtered} onRowClick={setDetail} emptyMsg="Sin clientes — crea el primero"/>
+
+    {modal&&<Modal title="Nuevo Cliente" onClose={()=>{setModal(false);setForm(empty);}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <Inp label="Nombre o alias" value={form.name} onChange={f("name")}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp label="Teléfono" value={form.phone} onChange={f("phone")}/>
+          <Inp label="Ciudad" value={form.city} onChange={f("city")}/>
+        </div>
+        <Inp label="Observaciones" value={form.notes} onChange={f("notes")}/>
+        <Btn onClick={save} full>Guardar Cliente</Btn>
+      </div>
+    </Modal>}
+
+    {detail&&<ClientLedgerModal client={detail} sales={sales} purchases={purchases} onClose={()=>setDetail(null)}/>}
+  </div>;
+}
+
+function ClientLedgerModal({client,sales,purchases,onClose}){
+  const[period,setPeriod]=useState("all");
+  const[from,setFrom]=useState("");const[to,setTo]=useState("");
+  const[printing,setPrinting]=useState(false);
+
+  const ledger=useMemo(()=>clientLedger(client,sales,purchases),[client,sales,purchases]);
+  const ops=ledger.ops.filter(o=>inPeriod(o.date,period,from,to));
+  const pVol=ops.reduce((a,o)=>a+o.total,0);
+  const pProfit=ops.filter(o=>o.type==="venta").reduce((a,o)=>a+o.profit,0);
+  const pUsdt=ops.filter(o=>o.symbol==="USDT").reduce((a,o)=>a+o.qty,0);
+
+  // Actividad: últimos 12 meses
+  const months=[...Array(12)].map((_,i)=>{const d=new Date();d.setMonth(d.getMonth()-(11-i));return d.toISOString().slice(0,7);});
+  const activity=months.map(m=>ledger.ops.filter(o=>o.date.slice(0,7)===m).reduce((a,o)=>a+o.total,0)/1000);
+  const mLabels=months.map(m=>["E","F","M","A","M","J","J","A","S","O","N","D"][+m.slice(5,7)-1]);
+
+  const doExport=()=>exportCSV(
+    ["Fecha","Tipo","Moneda","Cantidad","Precio","Total COP","Utilidad","Método","Notas"],
+    ops.map(o=>[o.date,o.type,o.symbol,o.qty,o.price,o.total,o.type==="venta"?o.profit:"",o.method||"",o.notes||""]),
+    `extracto-${client.name.replace(/\s+/g,"-")}-${today()}.csv`);
+
+  const opCols=[
+    {key:"date",label:"Fecha"},
+    {key:"type",label:"Tipo",render:v=><span style={{color:v==="venta"?C.rose:C.green,fontWeight:700,fontSize:11,textTransform:"uppercase"}}>{v==="venta"?"↑ Venta":"↓ Compra"}</span>},
+    {key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
+    {key:"qty",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
+    {key:"price",label:"Precio",render:v=>fmt(v)},
+    {key:"total",label:"Total",render:v=><b>{fmt(v)}</b>},
+    {key:"profit",label:"Utilidad",render:(v,r)=>r.type==="venta"?<b style={{color:v>=0?C.green:C.rose}}>{fmt(v)}</b>:<span style={{color:C.muted}}>—</span>},
+    {key:"method",label:"Método"},
+  ];
+
+  return <>
+    <Modal title={`📒 Libro Mayor — ${client.name}`} onClose={onClose} wide>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        {/* Resumen vida total */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(125px,1fr))",gap:8}}>
+          <Stat label="Operaciones" value={ledger.ops.length} sub={`${ledger.ventas.length} ventas · ${ledger.compras.length} compras`}/>
+          <Stat label="Volumen Total" value={fmtK(ledger.volCOP)} accent={C.blue}/>
+          <Stat label="Vol. USDT" value={fmtQ(ledger.volBySym.USDT||0,"USDT")} accent={COIN_C.USDT}/>
+          <Stat label="Utilidad Generada" value={fmtK(ledger.profit)} accent={ledger.profit>=0?C.green:C.rose}/>
+        </div>
+        <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:12,color:C.muted}}>
+          <span>📅 Primera op: <b style={{color:C.text}}>{ledger.first||"—"}</b></span>
+          <span>📅 Última op: <b style={{color:C.text}}>{ledger.last||"—"}</b></span>
+          {client.phone&&<span>📞 {client.phone}</span>}
+          {client.city&&<span>📍 {client.city}</span>}
+        </div>
+        {client.notes&&<p style={{margin:0,fontSize:12,color:C.muted,background:C.panel,padding:"8px 12px",borderRadius:8}}>💬 {client.notes}</p>}
+
+        {/* Actividad */}
+        <div style={{background:C.panel,borderRadius:10,padding:14}}>
+          <h4 style={{margin:"0 0 10px",color:C.text,fontSize:13,fontWeight:600}}>Actividad — últimos 12 meses (miles COP)</h4>
+          {activity.some(v=>v>0)?<Bars data={activity} labels={mLabels} color={C.accent} h={80}/>:<p style={{color:C.muted,fontSize:12,margin:0}}>Sin actividad registrada</p>}
+        </div>
+
+        {/* Filtros período */}
+        <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:12,color:C.muted}}>
+          <span>Período: <b style={{color:C.text}}>{ops.length} ops</b></span>
+          <span>Volumen: <b style={{color:C.blue}}>{fmt(pVol)}</b></span>
+          <span>USDT: <b style={{color:COIN_C.USDT}}>{fmtQ(pUsdt,"USDT")}</b></span>
+          <span>Utilidad: <b style={{color:pProfit>=0?C.green:C.rose}}>{fmt(pProfit)}</b></span>
+        </div>
+
+        {/* Historial */}
+        <Tabla cols={opCols} rows={ops} emptyMsg="Sin operaciones en este período"/>
+
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <Btn variant="secondary" onClick={doExport}>📥 Exportar Excel</Btn>
+          <Btn variant="secondary" onClick={()=>setPrinting(true)}>🖨️ Estado de Cuenta PDF</Btn>
+          {client.phone&&<Btn variant="secondary" onClick={()=>window.open(`https://wa.me/57${(client.phone||"").replace(/[-\s]/g,"")}?text=${encodeURIComponent(`Hola ${client.name}, le compartimos su resumen: ${ledger.ops.length} operaciones · Volumen total ${fmt(ledger.volCOP)}. ¡Gracias por su confianza! 🙏`)}`,"_blank")}>📲 WhatsApp</Btn>}
+        </div>
+      </div>
+    </Modal>
+
+    {/* Vista de impresión */}
+    {printing&&<div id="print-area" style={{position:"fixed",inset:0,background:"#fff",color:"#111",zIndex:1000,overflowY:"auto",padding:28,fontFamily:"Inter,sans-serif"}}>
+      <div className="no-print" style={{display:"flex",gap:8,marginBottom:16}}>
+        <button onClick={()=>window.print()} style={{padding:"9px 18px",background:"#26A17B",color:"#fff",border:"none",borderRadius:8,fontWeight:600,cursor:"pointer"}}>🖨️ Imprimir / Guardar PDF</button>
+        <button onClick={()=>setPrinting(false)} style={{padding:"9px 18px",background:"#eee",color:"#111",border:"none",borderRadius:8,fontWeight:600,cursor:"pointer"}}>Cerrar</button>
+      </div>
+      <h1 style={{margin:"0 0 2px",fontSize:22}}>Estado de Cuenta — {client.name}</h1>
+      <p style={{margin:"0 0 16px",fontSize:12,color:"#666"}}>Generado: {new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · Casa de Cambio Digital</p>
+      <div style={{display:"flex",gap:24,flexWrap:"wrap",marginBottom:18,fontSize:13}}>
+        <span><b>Operaciones:</b> {ledger.ops.length}</span>
+        <span><b>Volumen total:</b> {fmt(ledger.volCOP)}</span>
+        <span><b>Vol. USDT:</b> {fmtQ(ledger.volBySym.USDT||0,"USDT")}</span>
+        <span><b>Primera op:</b> {ledger.first||"—"}</span>
+        <span><b>Última op:</b> {ledger.last||"—"}</span>
+      </div>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+        <thead><tr style={{background:"#f3f3f3"}}>
+          {["Fecha","Tipo","Moneda","Cantidad","Precio","Total COP","Método"].map(h=><th key={h} style={{padding:"7px 9px",textAlign:"left",borderBottom:"2px solid #ddd"}}>{h}</th>)}
+        </tr></thead>
+        <tbody>
+          {ops.map(o=><tr key={o.id}>
+            <td style={{padding:"6px 9px",borderBottom:"1px solid #eee"}}>{o.date}</td>
+            <td style={{padding:"6px 9px",borderBottom:"1px solid #eee",textTransform:"capitalize"}}>{o.type}</td>
+            <td style={{padding:"6px 9px",borderBottom:"1px solid #eee"}}>{o.symbol}</td>
+            <td style={{padding:"6px 9px",borderBottom:"1px solid #eee"}}>{fmtQ(o.qty,o.symbol)}</td>
+            <td style={{padding:"6px 9px",borderBottom:"1px solid #eee"}}>{fmt(o.price)}</td>
+            <td style={{padding:"6px 9px",borderBottom:"1px solid #eee",fontWeight:600}}>{fmt(o.total)}</td>
+            <td style={{padding:"6px 9px",borderBottom:"1px solid #eee"}}>{o.method||"—"}</td>
+          </tr>)}
+        </tbody>
+      </table>
+      <p style={{marginTop:18,fontSize:12}}><b>Total del período:</b> {fmt(pVol)} · {ops.length} operaciones</p>
+    </div>}
+  </>;
+}
+
+// ─── PROVEEDORES ──────────────────────────────────────────────────────────
+function SuppliersModule({suppliers,purchases,reload,toast}){
+  const[modal,setModal]=useState(false);
+  const empty={name:"",contact:"",phone:"",city:"",notes:""};
+  const[form,setForm]=useState(empty);
+  const f=k=>v=>setForm(p=>({...p,[k]:v}));
+
+  const enriched=suppliers.map(s=>{
+    const ops=purchases.filter(p=>norm(p.supplier)===norm(s.name));
+    return {...s,_ops:ops.length,_vol:ops.reduce((a,p)=>a+p.total,0),_usdt:ops.filter(p=>p.symbol==="USDT").reduce((a,p)=>a+ +p.quantity,0)};
+  }).sort((a,b)=>b._vol-a._vol);
+
+  const save=async()=>{
+    if(!form.name){toast("El nombre es requerido","error");return;}
+    try{ await api.addSupplier(form);await reload();setModal(false);setForm(empty);toast("Proveedor creado"); }
+    catch(e){toast(e.message,"error");}
+  };
+
+  const cols=[
+    {key:"name",label:"Proveedor",render:v=><b>{v}</b>},
+    {key:"contact",label:"Contacto"},
+    {key:"phone",label:"Teléfono"},
+    {key:"_ops",label:"Compras"},
+    {key:"_vol",label:"Volumen COP",render:v=><span style={{color:C.amber,fontWeight:600}}>{fmtK(v)}</span>},
+    {key:"_usdt",label:"USDT Comprado",render:v=><span style={{color:COIN_C.USDT,fontFamily:"monospace"}}>{fmtQ(v,"USDT")}</span>},
+    {key:"wa",label:"",render:(_,r)=><button onClick={e=>{e.stopPropagation();window.open(`https://wa.me/57${(r.phone||"").replace(/[-\s]/g,"")}`,"_blank");}} style={{fontSize:11,background:"#0D2B1D",border:`1px solid ${C.green}`,color:C.green,borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>WA</button>},
+  ];
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <Head title="Proveedores" sub={`${suppliers.length} proveedores de liquidez`} action="Nuevo Proveedor" onAction={()=>setModal(true)}/>
+    <Tabla cols={cols} rows={enriched} emptyMsg="Sin proveedores"/>
+    {modal&&<Modal title="Nuevo Proveedor" onClose={()=>{setModal(false);setForm(empty);}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <Inp label="Nombre / alias" value={form.name} onChange={f("name")}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp label="Contacto" value={form.contact} onChange={f("contact")}/>
+          <Inp label="Teléfono" value={form.phone} onChange={f("phone")}/>
+        </div>
+        <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
+        <Btn onClick={save} full>Guardar Proveedor</Btn>
+      </div>
+    </Modal>}
+  </div>;
+}
+
+// ─── FLUJO DE CAJA ────────────────────────────────────────────────────────
+function CashFlowModule({cashflow,reload,toast}){
+  const[modal,setModal]=useState(false);
+  const[filter,setFilter]=useState("all");
+  const[period,setPeriod]=useState("month");
+  const[from,setFrom]=useState("");const[to,setTo]=useState("");
+  const empty={date:today(),type:"ingreso",description:"",amount:"",method:"transferencia"};
+  const[form,setForm]=useState(empty);
+  const f=k=>v=>setForm(p=>({...p,[k]:v}));
+
+  const balance=cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0);
+  const filtered=cashflow.filter(e=>inPeriod(e.date,period,from,to)&&(filter==="all"||e.type===filter));
+  const ing=filtered.filter(e=>e.type==="ingreso").reduce((a,e)=>a+e.amount,0);
+  const egr=filtered.filter(e=>e.type==="egreso").reduce((a,e)=>a+e.amount,0);
+
+  const save=async()=>{
+    if(!form.amount||+form.amount<=0){toast("Ingresa un valor válido","error");return;}
+    try{ await api.addCashFlow(form);await reload();setModal(false);setForm(empty);toast("Movimiento registrado"); }
+    catch(e){toast(e.message,"error");}
+  };
+
+  const cols=[
+    {key:"date",label:"Fecha"},
+    {key:"type",label:"Tipo",render:v=><span style={{color:v==="ingreso"?C.green:C.rose,fontWeight:700,fontSize:11,textTransform:"uppercase"}}>{v}</span>},
+    {key:"description",label:"Descripción"},
+    {key:"method",label:"Método"},
+    {key:"amount",label:"Valor",render:(v,r)=><b style={{color:r.type==="ingreso"?C.green:C.rose}}>{r.type==="ingreso"?"+":"-"}{fmt(v)}</b>},
+    {key:"del",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();try{await api.delCashFlow(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:11,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>✕</button>},
+  ];
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <Head title="Flujo de Caja" sub="ingresos y egresos en tiempo real" action="Movimiento" onAction={()=>setModal(true)}/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+      <Stat label="Saldo Total" value={fmtK(balance)} accent={balance>=0?C.accentL:C.rose}/>
+      <Stat label="Ingresos (período)" value={fmtK(ing)} accent={C.green}/>
+      <Stat label="Egresos (período)" value={fmtK(egr)} accent={C.rose}/>
+      <Stat label="Neto (período)" value={fmtK(ing-egr)} accent={ing-egr>=0?C.green:C.rose}/>
+    </div>
+    <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
+    <div style={{display:"flex",gap:6}}>
+      {[["all","Todos"],["ingreso","Ingresos"],["egreso","Egresos"]].map(([v,l])=><Pill key={v} label={l} active={filter===v} onClick={()=>setFilter(v)}/>)}
+    </div>
+    <Tabla cols={cols} rows={filtered} emptyMsg="Sin movimientos en este período"/>
+    {modal&&<Modal title="Nuevo Movimiento" onClose={()=>{setModal(false);setForm(empty);}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
+          <Sel label="Tipo" value={form.type} onChange={f("type")} options={[{value:"ingreso",label:"Ingreso"},{value:"egreso",label:"Egreso"}]}/>
+        </div>
+        <Inp label="Descripción" value={form.description} onChange={f("description")} placeholder="Ej: Aporte de capital"/>
+        <Inp label="Valor" type="number" value={form.amount} onChange={f("amount")}/>
+        <Sel label="Método" value={form.method} onChange={f("method")} options={["transferencia","efectivo","nequi","daviplata"].map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+        <Btn onClick={save} full>Registrar</Btn>
+      </div>
+    </Modal>}
+  </div>;
+}
+
+// ─── GASTOS ───────────────────────────────────────────────────────────────
+function ExpensesModule({expenses,reload,toast}){
+  const[modal,setModal]=useState(false);
+  const CATS=["Arriendo","Servicios","Comisiones","Publicidad","Nómina","Otros"];
+  const CC={Arriendo:C.blue,Servicios:C.green,Comisiones:C.amber,Publicidad:"#A855F7",Nómina:C.rose,Otros:C.slate};
+  const empty={date:today(),category:"Comisiones",description:"",amount:""};
+  const[form,setForm]=useState(empty);
+  const f=k=>v=>setForm(p=>({...p,[k]:v}));
+  const grand=expenses.reduce((a,e)=>a+e.amount,0);
+
+  const save=async()=>{
+    if(!form.amount||+form.amount<=0){toast("Ingresa un valor válido","error");return;}
+    try{ await api.addExpense(form);await reload();setModal(false);setForm(empty);toast("Gasto registrado"); }
+    catch(e){toast(e.message,"error");}
+  };
+
+  const cols=[
+    {key:"date",label:"Fecha"},
+    {key:"category",label:"Categoría",render:v=><span style={{padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600,background:`${CC[v]||C.slate}22`,color:CC[v]||C.slate}}>{v}</span>},
+    {key:"description",label:"Descripción"},
+    {key:"amount",label:"Valor",render:v=><b style={{color:C.rose}}>{fmt(v)}</b>},
+    {key:"del",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();try{await api.delExpense(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:11,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:6,padding:"2px 8px",cursor:"pointer"}}>✕</button>},
+  ];
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <Head title="Gastos Operativos" sub={`Total: ${fmt(grand)}`} action="Nuevo Gasto" onAction={()=>setModal(true)}/>
+    <Tabla cols={cols} rows={expenses} emptyMsg="Sin gastos registrados"/>
+    {modal&&<Modal title="Nuevo Gasto" onClose={()=>{setModal(false);setForm(empty);}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
+          <Sel label="Categoría" value={form.category} onChange={f("category")} options={CATS.map(c=>({value:c,label:c}))}/>
+        </div>
+        <Inp label="Descripción" value={form.description} onChange={f("description")}/>
+        <Inp label="Valor" type="number" value={form.amount} onChange={f("amount")}/>
+        <Btn onClick={save} full>Guardar Gasto</Btn>
+      </div>
+    </Modal>}
+  </div>;
+}
+
+// ─── RENTABILIDAD ─────────────────────────────────────────────────────────
+function ProfitModule({sales,purchases,expenses,inventory}){
+  const[period,setPeriod]=useState("month");
+  const[from,setFrom]=useState("");const[to,setTo]=useState("");
+
+  const fs=sales.filter(s=>inPeriod(s.date,period,from,to));
+  const fe=expenses.filter(e=>inPeriod(e.date,period,from,to));
+  const rev=fs.reduce((a,s)=>a+s.total,0);
+  const cogs=fs.reduce((a,s)=>a+(+s.cogs||0),0);
+  const gross=fs.reduce((a,s)=>a+(+s.gross_profit||0),0);
+  const exp=fe.reduce((a,e)=>a+e.amount,0);
+  const net=gross-exp;
+  const margin=rev>0?((net/rev)*100).toFixed(2):0;
+
+  const bySym=COINS.map(sym=>({
+    sym,
+    rev:fs.filter(s=>s.symbol===sym).reduce((a,s)=>a+s.total,0),
+    profit:fs.filter(s=>s.symbol===sym).reduce((a,s)=>a+(+s.gross_profit||0),0),
+    qty:fs.filter(s=>s.symbol===sym).reduce((a,s)=>a+ +s.quantity,0),
+    ops:fs.filter(s=>s.symbol===sym).length,
   })).filter(r=>r.ops>0).sort((a,b)=>b.profit-a.profit);
 
-  const grandRevenue=sales.reduce((a,s)=>a+s.total,0);
-  const grandCogs   =sales.reduce((a,s)=>a+s.cogs,0);
-  const grandProfit =sales.reduce((a,s)=>a+s.gross_profit,0);
-  const totalInvested=inventory.reduce((a,i)=>a+i.total_invested,0);
+  const maxProfit=Math.max(...bySym.map(r=>r.profit),1);
 
-  const reportCols=[
-    {key:"date",label:"Fecha"},
-    {key:"symbol",label:"Moneda",render:v=>React.createElement("span",{style:{color:COIN_COLORS[v]||C.accent,fontWeight:700}},v)},
-    {key:"quantity",label:"Cantidad",render:(v,r)=>fmtCrypto(v,r.symbol)},
-    {key:"unit_price",label:"P.Venta",render:v=>fmt(v)},
-    {key:"avg_cost_used",label:"CPP",render:v=>React.createElement("span",{style:{color:C.muted}},fmt(v))},
-    {key:"total",label:"Ingreso",render:v=>fmt(v)},
-    {key:"cogs",label:"Costo",render:v=>React.createElement("span",{style:{color:C.rose}},fmt(v))},
-    {key:"gross_profit",label:"Utilidad",render:v=>React.createElement("b",{style:{color:v>=0?C.green:C.rose,fontSize:14}},fmt(v))},
-    {key:"client",label:"Cliente"},
-  ];
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
+    <Head title="Rentabilidad" sub="utilidad real basada en costo promedio ponderado"/>
+    <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+      <Stat label="Ingresos" value={fmtK(rev)} accent={C.blue}/>
+      <Stat label="Costo Vendido" value={fmtK(cogs)} accent={C.rose}/>
+      <Stat label="Utilidad Bruta" value={fmtK(gross)} accent={C.amber}/>
+      <Stat label="Gastos" value={fmtK(exp)} accent={C.rose}/>
+      <Stat label="Utilidad Neta" value={fmtK(net)} accent={net>=0?C.green:C.rose}/>
+      <Stat label="Margen Neto" value={`${margin}%`} accent={+margin>1.5?C.green:+margin>0.5?C.amber:C.rose}/>
+    </div>
 
-  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
-    React.createElement(SectionHeader,{title:"Rentabilidad Criptomonedas"}),
+    {/* P&L */}
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:20}}>
+      <h4 style={{margin:"0 0 14px",color:C.text,fontSize:15,fontWeight:700}}>Estado de Resultados</h4>
+      {[
+        {l:"(+) Ingresos por ventas",v:rev,c:C.text},
+        {l:"(−) Costo de criptomonedas vendidas",v:cogs,c:C.rose},
+        {l:"= Utilidad bruta",v:gross,c:C.amber,b:1},
+        {l:"(−) Gastos operativos",v:exp,c:C.rose},
+        {l:"= Utilidad neta",v:net,c:net>=0?C.green:C.rose,b:1,big:1},
+      ].map((r,i,arr)=><div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none"}}>
+        <span style={{fontSize:r.big?15:13,fontWeight:r.b?700:400,color:C.text}}>{r.l}</span>
+        <span style={{fontSize:r.big?19:14,fontWeight:r.b?700:500,color:r.c,fontFamily:"monospace"}}>{fmt(r.v)}</span>
+      </div>)}
+    </div>
 
-    // KPIs período
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:4}},
-      React.createElement("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginBottom:12}},
-        React.createElement("span",{style:{fontSize:12,color:C.muted,fontWeight:600}},"HOY"),
-        React.createElement("span",{style:{fontSize:13,color:C.text}},`Ventas: ${todaySales.length} · Ingreso: `,React.createElement("b",{style:{color:C.accent}},fmt(todaySales.reduce((a,s)=>a+s.total,0)))),
-        React.createElement("span",{style:{fontSize:13,color:C.text}},`Utilidad: `,React.createElement("b",{style:{color:C.green}},fmt(todaySales.reduce((a,s)=>a+s.gross_profit,0))))
-      ),
-      React.createElement("div",{style:{display:"flex",gap:16,flexWrap:"wrap"}}),
-      React.createElement("span",{style:{fontSize:12,color:C.muted,fontWeight:600}},"ESTE MES"),
-      React.createElement("div",{style:{display:"flex",gap:16,flexWrap:"wrap",marginTop:8}},
-        React.createElement("span",{style:{fontSize:13,color:C.text}},`Operaciones: ${monthSales.length}`),
-        React.createElement("span",{style:{fontSize:13,color:C.text}},`Ingreso: `,React.createElement("b",{style:{color:C.accent}},fmt(monthSales.reduce((a,s)=>a+s.total,0)))),
-        React.createElement("span",{style:{fontSize:13,color:C.text}},`Utilidad: `,React.createElement("b",{style:{color:C.green}},fmt(monthSales.reduce((a,s)=>a+s.gross_profit,0))))
-      )
-    ),
-
-    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}},
-      React.createElement(StatCard,{label:"Ingresos Totales",value:fmtK(grandRevenue),accent:C.accent}),
-      React.createElement(StatCard,{label:"Costo Total",value:fmtK(grandCogs),accent:C.rose}),
-      React.createElement(StatCard,{label:"Utilidad Total",value:fmtK(grandProfit),accent:C.green}),
-      React.createElement(StatCard,{label:"Capital en Posición",value:fmtK(totalInvested),accent:C.amber}),
-      React.createElement(StatCard,{label:"Margen Global",value:`${grandRevenue>0?((grandProfit/grandRevenue)*100).toFixed(1):0}%`,accent:C.accentL}),
-      React.createElement(StatCard,{label:"Operaciones",value:sales.length})
-    ),
-
-    // Rentabilidad por moneda
-    profitBySymbol.length>0&&React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-      React.createElement("h4",{style:{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}},"Rentabilidad por Moneda"),
-      profitBySymbol.map(r=>{
-        const margin=r.revenue>0?((r.profit/r.revenue)*100).toFixed(1):0;
-        const barW=grandProfit>0?Math.max(4,(r.profit/grandProfit)*100):0;
-        return React.createElement("div",{key:r.symbol,style:{marginBottom:14}},
-          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:4}},
-            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8}},
-              React.createElement("span",{style:{width:8,height:8,borderRadius:"50%",background:COIN_COLORS[r.symbol]||C.accent,display:"inline-block"}}),
-              React.createElement("b",{style:{color:C.text,fontSize:13}},r.symbol),
-              React.createElement("span",{style:{fontSize:11,color:C.muted}},`${r.ops} ops`)
-            ),
-            React.createElement("div",{style:{display:"flex",gap:12}},
-              React.createElement("span",{style:{fontSize:12,color:C.muted}},`Ingreso: ${fmt(r.revenue)}`),
-              React.createElement("span",{style:{fontSize:12,color:C.rose}},`Costo: ${fmt(r.cogs)}`),
-              React.createElement("span",{style:{fontSize:13,fontWeight:700,color:r.profit>=0?C.green:C.rose}},fmt(r.profit)),
-              React.createElement("span",{style:{fontSize:12,color:C.muted}},`${margin}%`)
-            )
-          ),
-          React.createElement("div",{style:{height:5,background:C.border,borderRadius:3}},
-            React.createElement("div",{style:{height:"100%",background:COIN_COLORS[r.symbol]||C.accent,borderRadius:3,width:`${barW}%`,transition:"width .5s"}})
-          )
-        );
-      })
-    ),
-
-    // Historial completo
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-      React.createElement("h4",{style:{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}},"Historial de Ventas con Utilidad Real"),
-      loading
-        ? React.createElement("div",{style:{padding:20,textAlign:"center",color:C.muted}},"Cargando...")
-        : React.createElement(Table,{cols:reportCols,rows:sales,emptyMsg:"Sin ventas registradas"})
-    ),
-
-    // Estado actual del inventario
-    React.createElement("div",{style:{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}},
-      React.createElement("h4",{style:{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}},"Estado Actual del Inventario"),
-      React.createElement("div",{style:{display:"flex",gap:10,flexWrap:"wrap"}},
-        inventory.map(i=>React.createElement("div",{key:i.symbol,style:{background:C.card2,border:`1px solid ${i.quantity>0?COIN_COLORS[i.symbol]||C.border:C.border}`,borderRadius:10,padding:"12px 16px",minWidth:160,opacity:i.quantity>0?1:.5}},
-          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}},
-            React.createElement("b",{style:{color:COIN_COLORS[i.symbol]||C.accent,fontFamily:"monospace"}},i.symbol),
-            i.quantity>0&&React.createElement("span",{style:{fontSize:9,background:`${C.green}22`,color:C.green,padding:"2px 6px",borderRadius:10,fontWeight:700}},"ACTIVO")
-          ),
-          React.createElement("div",{style:{fontSize:15,fontWeight:700,color:C.text,fontFamily:"monospace"}},fmtCrypto(i.quantity,i.symbol)),
-          React.createElement("div",{style:{fontSize:11,color:C.muted,marginTop:3}},`CPP: ${fmt(i.avg_cost)}`),
-          React.createElement("div",{style:{fontSize:11,color:C.amber}},`${fmt(i.total_invested)} invertidos`),
-          React.createElement("div",{style:{fontSize:11,color:i.accumulated_profit>=0?C.green:C.rose,fontWeight:600}},`${fmt(i.accumulated_profit)} utilidad`)
-        ))
-      )
-    )
-  );
+    {/* Por moneda */}
+    {bySym.length>0&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:18}}>
+      <h4 style={{margin:"0 0 14px",color:C.text,fontSize:14,fontWeight:600}}>Rentabilidad por Moneda</h4>
+      {bySym.map(r=><div key={r.sym} style={{marginBottom:13}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,flexWrap:"wrap",gap:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{width:8,height:8,borderRadius:"50%",background:COIN_C[r.sym]||C.accent}}/>
+            <b style={{fontSize:13}}>{r.sym}</b>
+            <span style={{fontSize:11,color:C.muted}}>{r.ops} ops · {fmtQ(r.qty,r.sym)}</span>
+          </div>
+          <div style={{display:"flex",gap:12}}>
+            <span style={{fontSize:11,color:C.muted}}>Ingreso {fmtK(r.rev)}</span>
+            <b style={{fontSize:13,color:r.profit>=0?C.green:C.rose}}>{fmt(r.profit)}</b>
+          </div>
+        </div>
+        <div style={{height:5,background:C.border,borderRadius:3}}>
+          <div style={{height:"100%",background:COIN_C[r.sym]||C.accent,borderRadius:3,width:`${Math.max(3,(r.profit/maxProfit)*100)}%`}}/>
+        </div>
+      </div>)}
+    </div>}
+  </div>;
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════
-// NAV — Extendida con módulos crypto (grupo nuevo: Casa de Cambio)
-// ═══════════════════════════════════════════════════════════════════════════
+// ─── NAV + APP ────────────────────────────────────────────────────────────
 const NAV=[
-  {id:"dashboard",  icon:"📊", label:"Dashboard",      g:"Principal"},
-  {id:"sales",      icon:"💰", label:"Ventas",          g:"Principal"},
-  {id:"portfolio",  icon:"📋", label:"Cartera",         g:"Principal"},
-  {id:"clients",    icon:"👥", label:"Clientes",        g:"Contactos"},
-  {id:"suppliers",  icon:"🏭", label:"Proveedores",     g:"Contactos"},
-  {id:"purchases",  icon:"🛒", label:"Compras",         g:"Operaciones"},
-  {id:"expenses",   icon:"💸", label:"Gastos",          g:"Operaciones"},
-  {id:"inventory",  icon:"📦", label:"Inventario",      g:"Operaciones"},
-  {id:"cashflow",   icon:"💳", label:"Flujo de Caja",   g:"Finanzas"},
-  {id:"profits",    icon:"📈", label:"Ganancias",       g:"Finanzas"},
-  // ── Casa de Cambio Digital ──────────────────────────────
-  {id:"crypto_purchases", icon:"⬇️", label:"Compras Crypto",  g:"Casa de Cambio"},
-  {id:"crypto_sales",     icon:"⬆️", label:"Ventas Crypto",   g:"Casa de Cambio"},
-  {id:"crypto_inventory", icon:"₿",  label:"Inventario Crypto",g:"Casa de Cambio"},
-  {id:"crypto_profits",   icon:"💹", label:"Rentabilidad",    g:"Casa de Cambio"},
+  {id:"dash",icon:"📊",label:"Dashboard",g:"Principal"},
+  {id:"buy",icon:"⬇️",label:"Compras",g:"Operaciones"},
+  {id:"sell",icon:"⬆️",label:"Ventas",g:"Operaciones"},
+  {id:"inv",icon:"₿",label:"Inventario",g:"Operaciones"},
+  {id:"clients",icon:"👥",label:"Clientes",g:"Contactos"},
+  {id:"suppliers",icon:"🏦",label:"Proveedores",g:"Contactos"},
+  {id:"cash",icon:"💳",label:"Flujo de Caja",g:"Finanzas"},
+  {id:"exp",icon:"💸",label:"Gastos",g:"Finanzas"},
+  {id:"profit",icon:"💹",label:"Rentabilidad",g:"Finanzas"},
 ];
-const NAV_GROUPS=["Principal","Contactos","Operaciones","Finanzas","Casa de Cambio"];
+const GROUPS=["Principal","Operaciones","Contactos","Finanzas"];
 
-// ─── APP ROOT ─────────────────────────────────────────────────────────────────
 function App(){
-  const [user,setUser]=useState(null);
-  const [active,setActive]=useState("dashboard");
-  const [sidebar,setSidebar]=useState(false);
-  const [loading,setLoading]=useState(true);
-  const {toasts,show:toast,remove}=useToast();
+  const[user,setUser]=useState(null);
+  const[checking,setChecking]=useState(true);
+  const[active,setActive]=useState("dash");
+  const[sidebar,setSidebar]=useState(false);
+  const[loading,setLoading]=useState(false);
+  const{toasts,show:toast,remove}=useToast();
 
-  // Estado existente (sin cambios)
-  const [sales,setSales]=useState([]);
-  const [clients,setClients]=useState([]);
-  const [products,setProducts]=useState([]);
-  const [expenses,setExpenses]=useState([]);
-  const [suppliers,setSuppliers]=useState([]);
-  const [purchases,setPurchases]=useState([]);
-  const [cashflow,setCashflow]=useState([]);
+  const[clients,setClients]=useState([]);
+  const[suppliers,setSuppliers]=useState([]);
+  const[inventory,setInventory]=useState([]);
+  const[purchases,setPurchases]=useState([]);
+  const[sales,setSales]=useState([]);
+  const[kardex,setKardex]=useState([]);
+  const[cashflow,setCashflow]=useState([]);
+  const[expenses,setExpenses]=useState([]);
+  const[goal,setGoal]=useState(null);
 
-  // Cargar datos al iniciar (misma lógica, sin cambios)
-  const loadData=async()=>{
-    try{
-      const [cl,pr,sa,ex,su,pu,cf]=await Promise.all([
-        api.getClients(),api.getProducts(),api.getSales(),
-        api.getExpenses(),api.getSuppliers(),api.getPurchases(),api.getCashFlow()
-      ]);
-      setClients(cl);setProducts(pr);setSales(sa);
-      setExpenses(ex);setSuppliers(su);setPurchases(pu);setCashflow(cf);
-    }catch(e){toast("Error cargando datos: "+e.message,"error");}
-    finally{setLoading(false);}
+  const reload=async()=>{
+    const[cl,su,inv,pu,sa,ka,cf,ex,go]=await Promise.all([
+      api.getClients(),api.getSuppliers(),api.getInventory(),
+      api.getPurchases(),api.getSales(),api.getKardex(),
+      api.getCashFlow(),api.getExpenses(),api.getGoal()
+    ]);
+    setClients(cl);setSuppliers(su);setInventory(inv);
+    setPurchases(pu);setSales(sa);setKardex(ka);
+    setCashflow(cf);setExpenses(ex);setGoal(go);
   };
 
-  const handleLogin=async(u)=>{
-    setUser(u);
-    setLoading(true);
-    await loadData();
+  // Restaurar sesión al cargar
+  useEffect(()=>{
+    api.session().then(async u=>{
+      if(u){ setUser(u); setLoading(true); try{await reload();}catch(e){toast(e.message,"error");} setLoading(false); }
+    }).finally(()=>setChecking(false));
+  },[]);
+
+  const handleLogin=async u=>{
+    setUser(u);setLoading(true);
+    try{await reload();}catch(e){toast("Error cargando datos: "+e.message,"error");}
+    setLoading(false);
   };
+
+  const handleLogout=async()=>{
+    await api.logout();setUser(null);
+    setClients([]);setSuppliers([]);setInventory([]);setPurchases([]);
+    setSales([]);setKardex([]);setCashflow([]);setExpenses([]);setGoal(null);
+  };
+
+  const saveGoal=async g=>{ const r=await api.saveGoal(g); setGoal(r); };
 
   const W=typeof window!=="undefined"?window.innerWidth:1024;
   const isMobile=W<768;
-  const SW=230;
+  const SW=225;
 
-  if(!user) return React.createElement(Login,{onLogin:handleLogin});
+  if(checking) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:14}}>Cargando...</div>;
+  if(!user) return <Login onLogin={handleLogin}/>;
 
-  const props={sales,setSales,clients,setClients,products,setProducts,
-    expenses,setExpenses,suppliers,setSuppliers,purchases,setPurchases,
-    cashflow,setCashflow,toast};
+  const navItem=NAV.find(n=>n.id===active)||NAV[0];
+  const props={clients,suppliers,inventory,purchases,sales,kardex,cashflow,expenses,goal,reload,toast,onSaveGoal:saveGoal};
 
-  const module=()=>{
-    if(loading) return React.createElement("div",{style:{display:"flex",alignItems:"center",justifyContent:"center",height:200,color:C.muted}},"Cargando...");
+  const Module=()=>{
+    if(loading) return <div style={{padding:60,textAlign:"center",color:C.muted}}>Cargando datos...</div>;
     switch(active){
-      // Módulos existentes — sin cambios
-      case "dashboard":  return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:20}},
-        React.createElement(Dashboard,props),
-        React.createElement(CryptoDashboardPanel,null)
-      );
-      case "sales":      return React.createElement(SalesModule,props);
-      case "portfolio":  return React.createElement(PortfolioModule,props);
-      case "clients":    return React.createElement(ClientsModule,props);
-      case "suppliers":  return React.createElement(SuppliersModule,props);
-      case "purchases":  return React.createElement(PurchasesModule,props);
-      case "expenses":   return React.createElement(ExpensesModule,props);
-      case "inventory":  return React.createElement(InventoryModule,props);
-      case "cashflow":   return React.createElement(CashFlowModule,props);
-      case "profits":    return React.createElement(ProfitModule,props);
-      // Módulos nuevos Casa de Cambio
-      case "crypto_purchases": return React.createElement(CryptoPurchasesModule,{suppliers,toast});
-      case "crypto_sales":     return React.createElement(CryptoSalesModule,{clients,toast});
-      case "crypto_inventory": return React.createElement(CryptoInventoryModule,{toast});
-      case "crypto_profits":   return React.createElement(CryptoProfitModule,{toast});
+      case "dash": return <Dashboard {...props}/>;
+      case "buy": return <PurchasesModule {...props}/>;
+      case "sell": return <SalesModule {...props}/>;
+      case "inv": return <InventoryModule {...props}/>;
+      case "clients": return <ClientsModule {...props}/>;
+      case "suppliers": return <SuppliersModule {...props}/>;
+      case "cash": return <CashFlowModule {...props}/>;
+      case "exp": return <ExpensesModule {...props}/>;
+      case "profit": return <ProfitModule {...props}/>;
       default: return null;
     }
   };
 
-  const navItem=NAV.find(n=>n.id===active)||NAV[0];
+  return <div style={{minHeight:"100vh",background:C.bg,display:"flex"}}>
+    {sidebar&&<div onClick={()=>setSidebar(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:40}}/>}
 
-  return React.createElement("div",{style:{minHeight:"100vh",background:C.bg,fontFamily:"'Inter',system-ui,sans-serif",color:C.text,display:"flex"}},
-    sidebar&&React.createElement("div",{onClick:()=>setSidebar(false),style:{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:40}}),
+    <nav style={{width:SW,background:C.panel,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",position:"fixed",top:0,bottom:0,left:0,zIndex:50,transform:isMobile?`translateX(${sidebar?0:-SW}px)`:"none",transition:"transform .25s"}}>
+      <div style={{padding:"18px 14px 12px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:26,color:C.accentL}}>₿</span>
+          <div>
+            <div style={{fontSize:13,fontWeight:800}}>Casa de Cambio</div>
+            <div style={{fontSize:10,color:C.muted}}>{user.name||user.email}</div>
+          </div>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
+        {GROUPS.map(g=><div key={g} style={{marginBottom:6}}>
+          <div style={{fontSize:9,color:C.slate,textTransform:"uppercase",letterSpacing:1,padding:"6px 12px 3px",fontWeight:700}}>{g}</div>
+          {NAV.filter(n=>n.g===g).map(n=><button key={n.id}
+            onClick={()=>{setActive(n.id);setSidebar(false);}}
+            style={{width:"100%",display:"flex",alignItems:"center",gap:9,padding:"8px 12px",background:active===n.id?`${C.accent}1A`:"transparent",border:`1px solid ${active===n.id?C.accent:"transparent"}`,borderRadius:8,cursor:"pointer",textAlign:"left",marginBottom:1,color:active===n.id?C.accentL:C.muted,fontSize:13,fontWeight:active===n.id?600:400}}>
+            <span style={{fontSize:14}}>{n.icon}</span>{n.label}
+          </button>)}
+        </div>)}
+      </div>
+      <div style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`}}>
+        <div style={{fontSize:11,color:C.muted,marginBottom:7}}>👤 {user.role==="admin"?"Administrador":"Empleado"}</div>
+        <button onClick={handleLogout} style={{width:"100%",padding:7,background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,cursor:"pointer",fontSize:12}}>Cerrar sesión</button>
+      </div>
+    </nav>
 
-    // Sidebar
-    React.createElement("nav",{style:{width:SW,background:C.panel,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",position:"fixed",top:0,bottom:0,left:0,zIndex:50,transform:isMobile?`translateX(${sidebar?0:-SW}px)`:"none",transition:"transform .25s"}},
-      React.createElement("div",{style:{padding:"18px 14px 12px",borderBottom:`1px solid ${C.border}`}},
-        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
-          React.createElement("span",{style:{fontSize:24}},"₿"),
-          React.createElement("div",null,
-            React.createElement("div",{style:{fontSize:13,fontWeight:800,color:C.text}},"Libro Empresarial"),
-            React.createElement("div",{style:{fontSize:10,color:C.muted}},user.name||user.email)
-          )
-        )
-      ),
-      React.createElement("div",{style:{flex:1,overflowY:"auto",padding:"6px 8px"}},
-        NAV_GROUPS.map(g=>React.createElement("div",{key:g,style:{marginBottom:6}},
-          React.createElement("div",{style:{
-            fontSize:9,color:g==="Casa de Cambio"?C.amber:C.slate,
-            textTransform:"uppercase",letterSpacing:1,padding:"6px 12px 3px",fontWeight:700
-          }},g==="Casa de Cambio"?"₿ "+g:g),
-          NAV.filter(n=>n.g===g).map(n=>React.createElement("button",{key:n.id,
-            onClick:()=>{setActive(n.id);setSidebar(false);},
-            style:{width:"100%",display:"flex",alignItems:"center",gap:9,padding:"8px 12px",
-              background:active===n.id?`${C.accent}1A`:"transparent",
-              border:`1px solid ${active===n.id?C.accent:"transparent"}`,
-              borderRadius:8,cursor:"pointer",textAlign:"left",marginBottom:1,
-              color:active===n.id?C.accentL:C.muted,fontSize:13,fontWeight:active===n.id?600:400}},
-            React.createElement("span",{style:{fontSize:14}},n.icon),n.label
-          ))
-        ))
-      ),
-      React.createElement("div",{style:{padding:"10px 14px",borderTop:`1px solid ${C.border}`}},
-        React.createElement("div",{style:{fontSize:11,color:C.muted,marginBottom:7}},`👤 ${user.role==="admin"?"Admin":"Empleado"}`),
-        React.createElement("button",{
-          onClick:async()=>{
-            await api.logout();
-            setUser(null);
-            setSales([]);setClients([]);setProducts([]);
-            setExpenses([]);setSuppliers([]);setPurchases([]);setCashflow([]);
-          },
-          style:{width:"100%",padding:"7px",background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,cursor:"pointer",fontSize:12}
-        },"Cerrar sesión")
-      )
-    ),
+    <div style={{marginLeft:isMobile?0:SW,flex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}}>
+      <header style={{background:C.panel,borderBottom:`1px solid ${C.border}`,padding:"0 16px",height:50,display:"flex",alignItems:"center",gap:10,position:"sticky",top:0,zIndex:30}}>
+        {isMobile&&<button onClick={()=>setSidebar(s=>!s)} style={{background:"none",border:"none",color:C.muted,fontSize:20,cursor:"pointer",padding:4}}>☰</button>}
+        <span style={{fontSize:15}}>{navItem.icon}</span>
+        <h2 style={{margin:0,fontSize:15,fontWeight:700,flex:1}}>{navItem.label}</h2>
+        <button onClick={async()=>{setLoading(true);try{await reload();toast("Datos actualizados");}catch(e){toast(e.message,"error");}setLoading(false);}}
+          style={{background:"none",border:`1px solid ${C.border}`,color:C.muted,borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:12}}>🔄</button>
+        <div style={{fontSize:11,color:C.muted}}>{new Date().toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"})}</div>
+      </header>
+      <main style={{flex:1,padding:"16px 14px 40px",maxWidth:1400,width:"100%",margin:"0 auto"}}>
+        <Module/>
+      </main>
+    </div>
 
-    // Main
-    React.createElement("div",{style:{marginLeft:isMobile?0:SW,flex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}},
-      React.createElement("header",{style:{background:C.panel,borderBottom:`1px solid ${C.border}`,padding:"0 16px",height:50,display:"flex",alignItems:"center",gap:10,position:"sticky",top:0,zIndex:30}},
-        isMobile&&React.createElement("button",{onClick:()=>setSidebar(s=>!s),style:{background:"none",border:"none",color:C.muted,fontSize:20,cursor:"pointer",padding:4}},"☰"),
-        React.createElement("span",{style:{fontSize:15}},navItem.icon),
-        React.createElement("h2",{style:{margin:0,fontSize:15,fontWeight:700,color:C.text,flex:1}},navItem.label),
-        React.createElement("div",{style:{fontSize:11,color:C.muted}},new Date().toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"}))
-      ),
-      React.createElement("main",{style:{flex:1,padding:"18px 16px 40px",maxWidth:1400,width:"100%",margin:"0 auto",boxSizing:"border-box"}},
-        module()
-      )
-    ),
-
-    toasts.map(t=>React.createElement(Toast,{key:t.id,msg:t.msg,type:t.type,onDone:()=>remove(t.id)}))
-  );
+    {toasts.map(t=><Toast key={t.id} msg={t.msg} type={t.type} onDone={()=>remove(t.id)}/>)}
+  </div>;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
