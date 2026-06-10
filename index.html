@@ -1132,7 +1132,6 @@ function SuppliersModule({suppliers,purchases,reload,toast}){
   const[form,setForm]=useState(empty);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const enriched=suppliers.map(s=>{const ops=purchases.filter(p=>norm(p.supplier)===norm(s.name));return{...s,_ops:ops.length,_vol:ops.reduce((a,p)=>a+p.total,0),_usdt:ops.filter(p=>p.symbol==="USDT").reduce((a,p)=>a+ +p.quantity,0),_pend:ops.reduce((a,p)=>a+pendOf(p),0)};}).sort((a,b)=>b._vol-a._vol);
   const[editRow,setEditRow]=useState(null);
-  const save=async()=>{if(!form.name){toast("Nombre requerido","error");return;}
   const openEdit=r=>{setEditRow(r);setForm({name:r.name||"",contact:r.contact||"",phone:r.phone||"",notes:r.notes||""});setModal(true);};
   const del=async r=>{if(!confirm(`¿Eliminar proveedor ${r.name}?`))return;try{await api.deleteSupplier(r.id);await reload();toast("Proveedor eliminado");}catch(e){toast(e.message,"error");};};
   const saveSup=async()=>{if(!form.name){toast("Nombre requerido","error");return;}try{if(editRow){await api.updateSupplier(editRow.id,form);toast("Proveedor actualizado");}else{await api.addSupplier(form);toast("Proveedor creado");}await reload();setModal(false);setEditRow(null);setForm(empty);}catch(e){toast(e.message,"error");};};
