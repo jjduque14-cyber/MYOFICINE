@@ -101,6 +101,17 @@ const api={
   async getClients(){const{data,error}=await sb.from("clients").select("*").is("deleted_at",null).order("name");if(error)throw error;return data||[];},
   async addClient(c){const{data,error}=await sb.from("clients").insert({...c,user_id:UID}).select().single();if(error)throw error;return data;},
   async updateClient(id,c){const{data,error}=await sb.from("clients").update(c).eq("id",id).select().single();if(error)throw error;return data;},
+  async deleteClient(id){const{error}=await sb.from("clients").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
+  async updateSupplier(id,s){const{data,error}=await sb.from("suppliers").update(s).eq("id",id).select().single();if(error)throw error;return data;},
+  async deleteSupplier(id){const{error}=await sb.from("suppliers").delete().eq("id",id);if(error)throw error;},
+  async updatePurchase(id,p){const{data,error}=await sb.from("crypto_purchases").update({date:p.date,symbol:p.symbol,quantity:+p.quantity,unit_cost:+p.unit_cost,total:+p.quantity*+p.unit_cost,supplier:p.supplier,pay_method:p.pay_method,notes:p.notes,due_date:p.due_date||null,paid:+p.paid||0,status:p.status}).eq("id",id).select().single();if(error)throw error;return data;},
+  async deletePurchase(id){const{error}=await sb.from("crypto_purchases").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
+  async updateSale(id,s){const{data,error}=await sb.from("crypto_sales").update({date:s.date,symbol:s.symbol,quantity:+s.quantity,unit_price:+s.unit_price,total:+s.quantity*+s.unit_price,client:s.client,pay_method:s.pay_method,notes:s.notes,due_date:s.due_date||null,paid:+s.paid||0,status:s.status}).eq("id",id).select().single();if(error)throw error;return data;},
+  async deleteSale(id){const{error}=await sb.from("crypto_sales").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
+  async updatePayment(id,p){const{data,error}=await sb.from("crypto_payments").update({date:p.date,party:p.party,direction:p.direction,amount:+p.amount,method:p.method,notes:p.notes}).eq("id",id).select().single();if(error)throw error;return data;},
+  async deletePayment(id){const{error}=await sb.from("crypto_payments").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
+  async updateExpense(id,e){const{data,error}=await sb.from("expenses").update({date:e.date,category:e.category,description:e.description,amount:+e.amount}).eq("id",id).select().single();if(error)throw error;return data;},
+  async updateCashFlow(id,e){const{data,error}=await sb.from("cash_flow").update({date:e.date,type:e.type,description:e.description,amount:+e.amount,method:e.method}).eq("id",id).select().single();if(error)throw error;return data;},
   async getSuppliers(){const{data,error}=await sb.from("suppliers").select("*").order("name");if(error)throw error;return data||[];},
   async addSupplier(s){const{data,error}=await sb.from("suppliers").insert({...s,user_id:UID}).select().single();if(error)throw error;return data;},
   async getInventory(){const{data,error}=await sb.from("crypto_inventory_view").select("*");if(error)throw error;return data||[];},
@@ -525,23 +536,32 @@ function PurchasesModule({purchases,inventory,suppliers,reload,toast}){
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
   const empty={date:today(),symbol:"USDT",quantity:"",unit_cost:"",supplier:"",pay_method:"transferencia",notes:"",payType:"contado",initial_paid:"",due_date:""};
   const[form,setForm]=useState(empty);const[file,setFile]=useState(null);const f=k=>v=>setForm(p=>({...p,[k]:v}));
+  const[editRow,setEditRow]=useState(null);
   const filtered=purchases.filter(p=>inP(p.date,period,from,to));
   const curInv=inventory.find(i=>i.symbol===form.symbol);
+  const openEdit=r=>{setEditRow(r);setForm({date:r.date,symbol:r.symbol,quantity:String(r.quantity),unit_cost:String(r.unit_cost),supplier:r.supplier||"",pay_method:r.pay_method||"transferencia",notes:r.notes||"",payType:"contado",initial_paid:"",due_date:r.due_date||"",paid:String(r.paid||0),status:r.status||"pagado"});setModal(true);};
+  const del=async r=>{if(!confirm(`¿Anular compra de ${fmtQ(r.quantity,r.symbol)} ${r.symbol}?`))return;try{await api.deletePurchase(r.id);await reload();toast("Compra anulada");}catch(e){toast(e.message,"error");};};
   const save=async()=>{
-    if(!form.quantity||!form.unit_cost){toast("Completa cantidad y precio","error");return;}
-    setSaving(true);try{await api.addPurchase(form,file);await reload();setModal(false);setForm(empty);setFile(null);toast(`Compra ${fmtQ(form.quantity,form.symbol)} ${form.symbol} registrada`);}
-    catch(e){toast(e.message,"error");}finally{setSaving(false);}
+    if(!form.quantity||!form.unit_cost){toast("Completa campos","error");return;}
+    setSaving(true);
+    try{
+      if(editRow){await api.updatePurchase(editRow.id,form);toast("Compra actualizada");}
+      else{await api.addPurchase(form,file);toast(`Compra ${fmtQ(form.quantity,form.symbol)} ${form.symbol} registrada`);}
+      await reload();setModal(false);setEditRow(null);setForm(empty);setFile(null);
+    }catch(e){toast(e.message,"error");}finally{setSaving(false);}
   };
   const cols=[
     {key:"date",label:"Fecha"},{key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
     {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
     {key:"unit_cost",label:"Precio",render:v=>fmt(v)},{key:"total",label:"Total",render:v=><b>{fmt(v)}</b>},
+    {key:"paid",label:"Pagado",render:v=><span style={{color:C.green}}>{fmt(v||0)}</span>},
     {key:"st",label:"Estado",render:(_,r)=><Badge label={stOf(r)} color={ST_C[stOf(r)]}/>},
     {key:"supplier",label:"Proveedor"},{key:"pay_method",label:"Método"},
     {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:10}}>📎</a>:""},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Compras" sub={`${purchases.length} operaciones`} action="Nueva Compra" onAction={()=>setModal(true)}
+    <Head title="Compras" sub={`${purchases.length} operaciones`} action="Nueva Compra" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}
       extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","Precio","Total","Pagado","Pendiente","Estado","Vence","Proveedor","Método"],filtered.map(p=>[p.date,p.symbol,p.quantity,p.unit_cost,p.total,p.paid||0,pendOf(p),stOf(p),p.due_date||"",p.supplier||"",p.pay_method||""]),`compras-${today()}.csv`)}>📥 Excel</Btn>}/>
     <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
@@ -550,7 +570,7 @@ function PurchasesModule({purchases,inventory,suppliers,reload,toast}){
       <Stat small label="Por Pagar" value={fmtK(filtered.reduce((a,p)=>a+pendOf(p),0))} accent={C.rose}/>
     </div>
     <Tabla cols={cols} rows={filtered} emptyMsg="Sin compras en este período"/>
-    {modal&&<Modal title="Nueva Compra" onClose={()=>{setModal(false);setForm(empty);setFile(null);}}>
+    {modal&&<Modal title={editRow?"Editar Compra":"Nueva Compra"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);setFile(null);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
@@ -575,11 +595,15 @@ function PurchasesModule({purchases,inventory,suppliers,reload,toast}){
           <Inp label="Vence" type="date" value={form.due_date} onChange={f("due_date")}/>
         </div>}
         <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
-        <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        {!editRow&&<div style={{display:"flex",flexDirection:"column",gap:3}}>
           <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>📎 Comprobante</label>
           <input type="file" accept="image/*,.pdf" onChange={e=>setFile(e.target.files&&e.target.files[0]||null)}/>
-        </div>
-        <Btn onClick={save} disabled={saving} full>{saving?"Procesando...":"Registrar Compra"}</Btn>
+        </div>}
+        {editRow&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <Inp label="Valor pagado" type="number" value={form.paid||""} onChange={f("paid")}/>
+          <Sel label="Estado" value={form.status||"pagado"} onChange={f("status")} options={[{value:"pagado",label:"✅ Pagado"},{value:"parcial",label:"⚠️ Parcial"},{value:"pendiente",label:"⏳ Pendiente"},{value:"vencido",label:"🔴 Vencido"}]}/>
+        </div>}
+        <Btn onClick={save} disabled={saving} full>{saving?"Procesando...":editRow?"Actualizar Compra":"Registrar Compra"}</Btn>
       </div>
     </Modal>}
   </div>;
@@ -625,7 +649,7 @@ function SalesModule({sales,inventory,clients,reload,toast}){
       <Stat small label="Por Cobrar" value={fmtK(filtered.reduce((a,s)=>a+pendOf(s),0))} accent={C.amber}/>
     </div>
     <Tabla cols={cols} rows={filtered} emptyMsg="Sin ventas en este período"/>
-    {modal&&<Modal title="Nueva Venta" onClose={()=>{setModal(false);setForm(empty);setFile(null);}}>
+    {modal&&<Modal title={editRow?"Editar Venta":"Nueva Venta"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);setFile(null);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
@@ -655,11 +679,15 @@ function SalesModule({sales,inventory,clients,reload,toast}){
           <Inp label="Vence" type="date" value={form.due_date} onChange={f("due_date")}/>
         </div>}
         <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
-        <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        {!editRow&&<div style={{display:"flex",flexDirection:"column",gap:3}}>
           <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>📎 Comprobante</label>
           <input type="file" accept="image/*,.pdf" onChange={e=>setFile(e.target.files&&e.target.files[0]||null)}/>
-        </div>
-        <Btn onClick={save} disabled={saving} full>{saving?"Procesando...":"Registrar Venta"}</Btn>
+        </div>}
+        {editRow&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <Inp label="Valor pagado" type="number" value={form.paid||""} onChange={f("paid")}/>
+          <Sel label="Estado" value={form.status||"pagado"} onChange={f("status")} options={[{value:"pagado",label:"✅ Pagado"},{value:"parcial",label:"⚠️ Parcial"},{value:"pendiente",label:"⏳ Pendiente"},{value:"vencido",label:"🔴 Vencido"}]}/>
+        </div>}
+        <Btn onClick={save} disabled={saving} full>{saving?"Procesando...":editRow?"Actualizar Venta":"Registrar Venta"}</Btn>
       </div>
     </Modal>}
   </div>;
@@ -687,6 +715,7 @@ function CarteraModule({sales,purchases,payments,reload,toast}){
     {key:"amount",label:"Valor",render:(v,r)=><b style={{color:r.direction==="recibido"?C.green:C.rose}}>{r.direction==="recibido"?"+":"-"}{fmt(v)}</b>},
     {key:"method",label:"Método"},{key:"notes",label:"Notas"},
     {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:11}}>📎</a>:""},
+    {key:"pacc",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();if(!confirm("¿Eliminar este pago?"))return;try{await api.deletePayment(r.id);await reload();toast("Pago eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Cartera y Créditos"/>
@@ -1050,6 +1079,7 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast}){
     &&(tagF==="all"||(tagF==="activo"||tagF==="inactivo"?((c.status||"activo")===tagF):(c.tags||[]).includes(tagF))))
     .sort((a,b)=>sort==="profit"?b._profit-a._profit:sort==="vol"?b._vol-a._vol:sort==="ops"?b._ops-a._ops:a.name.localeCompare(b.name));
 
+  const delClient=async r=>{if(!confirm(`¿Eliminar cliente ${r.name}?`))return;try{await api.deleteClient(r.id);await reload();toast("Cliente eliminado");}catch(e){toast(e.message,"error");};};
   const cols=[
     {key:"name",label:"Cliente",render:(v,r)=><div><b style={{fontSize:13}}>{v}</b><div style={{display:"flex",gap:3,marginTop:2}}>{(r.tags||[]).map(t=><Badge key={t} label={t} color={TAG_C[t]||C.slate}/>)}</div></div>},
     {key:"_ops",label:"Ops"},{key:"_vol",label:"Volumen",render:v=><span style={{color:C.blue,fontWeight:600}}>{fmtK(v)}</span>},
@@ -1057,6 +1087,7 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast}){
     {key:"_profit",label:"Utilidad",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmtK(v)}</b>},
     {key:"_saldo",label:"Saldo",render:v=>Math.abs(v)<0.01?<span style={{color:C.muted}}>Al día</span>:v>0?<Badge label={`Debe ${fmtK(v)}`} color={C.amber}/>:<Badge label={`Favor ${fmtK(-v)}`} color={C.blue}/>},
     {key:"_daysSince",label:"Inactividad",render:v=>v===null?"—":v===0?<span style={{color:C.green}}>Hoy</span>:v>30?<span style={{color:C.rose}}>{v}d</span>:`${v}d`},
+    {key:"cacc",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();delClient(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button>},
   ];
 
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -1090,22 +1121,27 @@ function SuppliersModule({suppliers,purchases,reload,toast}){
   const[modal,setModal]=useState(false);const empty={name:"",contact:"",phone:"",notes:""};
   const[form,setForm]=useState(empty);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const enriched=suppliers.map(s=>{const ops=purchases.filter(p=>norm(p.supplier)===norm(s.name));return{...s,_ops:ops.length,_vol:ops.reduce((a,p)=>a+p.total,0),_usdt:ops.filter(p=>p.symbol==="USDT").reduce((a,p)=>a+ +p.quantity,0),_pend:ops.reduce((a,p)=>a+pendOf(p),0)};}).sort((a,b)=>b._vol-a._vol);
-  const save=async()=>{if(!form.name){toast("Nombre requerido","error");return;}try{await api.addSupplier(form);await reload();setModal(false);setForm(empty);toast("Proveedor creado");}catch(e){toast(e.message,"error");}};
+  const save=async()=>{if(!form.name){toast("Nombre requerido","error");return;}
+  const[editRow,setEditRow]=useState(null);
+  const openEdit=r=>{setEditRow(r);setForm({name:r.name||"",contact:r.contact||"",phone:r.phone||"",notes:r.notes||""});setModal(true);};
+  const del=async r=>{if(!confirm(`¿Eliminar proveedor ${r.name}?`))return;try{await api.deleteSupplier(r.id);await reload();toast("Proveedor eliminado");}catch(e){toast(e.message,"error");};};
+  const saveSup=async()=>{if(!form.name){toast("Nombre requerido","error");return;}try{if(editRow){await api.updateSupplier(editRow.id,form);toast("Proveedor actualizado");}else{await api.addSupplier(form);toast("Proveedor creado");}await reload();setModal(false);setEditRow(null);setForm(empty);}catch(e){toast(e.message,"error");};};
   const cols=[
     {key:"name",label:"Proveedor",render:v=><b>{v}</b>},{key:"phone",label:"Teléfono"},
     {key:"_ops",label:"Compras"},{key:"_vol",label:"Volumen",render:v=><span style={{color:C.amber,fontWeight:600}}>{fmtK(v)}</span>},
     {key:"_usdt",label:"USDT",render:v=><span style={{color:COIN_C.USDT,fontFamily:"monospace"}}>{fmtQ(v,"USDT")}</span>},
     {key:"_pend",label:"Le Debemos",render:v=>v>0.01?<b style={{color:C.rose}}>{fmt(v)}</b>:<span style={{color:C.muted}}>Al día</span>},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Proveedores de Liquidez" sub={`${suppliers.length} proveedores`} action="Nuevo" onAction={()=>setModal(true)}/>
+    <Head title="Proveedores de Liquidez" sub={`${suppliers.length} proveedores`} action="Nuevo" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}/>
     <Tabla cols={cols} rows={enriched} emptyMsg="Sin proveedores"/>
-    {modal&&<Modal title="Nuevo Proveedor" onClose={()=>{setModal(false);setForm(empty);}}>
+    {modal&&<Modal title={editRow?"Editar Proveedor":"Nuevo Proveedor"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <Inp label="Nombre / alias" value={form.name} onChange={f("name")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Contacto" value={form.contact} onChange={f("contact")}/><Inp label="Teléfono" value={form.phone} onChange={f("phone")}/></div>
         <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
-        <Btn onClick={save} full>Guardar</Btn>
+        <Btn onClick={saveSup} full>{editRow?"Actualizar":"Guardar"}</Btn>
       </div>
     </Modal>}
   </div>;
@@ -1126,10 +1162,19 @@ function CashFlowModule({cashflow,reload,toast}){
     {key:"date",label:"Fecha"},{key:"type",label:"Tipo",render:v=><span style={{color:v==="ingreso"?C.green:C.rose,fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{v}</span>},
     {key:"description",label:"Descripción"},{key:"method",label:"Método"},
     {key:"amount",label:"Valor",render:(v,r)=><b style={{color:r.type==="ingreso"?C.green:C.rose}}>{r.type==="ingreso"?"+":"-"}{fmt(v)}</b>},
-    {key:"del",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();try{await api.delCashFlow(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 7px",cursor:"pointer"}}>✕</button>},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();setCFEdit(r);setCFForm({date:r.date,type:r.type,description:r.description||"",amount:String(r.amount),method:r.method||"transferencia"});setCFModal(true);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={async e=>{e.stopPropagation();try{await api.delCashFlow(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
+  const[cfEdit,setCFEdit]=useState(null);const[cfModal,setCFModal]=useState(false);const[cfForm,setCFForm]=useState({date:today(),type:"ingreso",description:"",amount:"",method:"transferencia"});
+  const saveCF=async()=>{
+    if(!cfForm.amount||+cfForm.amount<=0){toast("Valor inválido","error");return;}
+    try{
+      if(cfEdit){await api.updateCashFlow(cfEdit.id,cfForm);toast("Movimiento actualizado");}
+      else{await api.addCashFlow(cfForm);toast("Registrado");}
+      await reload();setCFModal(false);setCFEdit(null);setCFForm({date:today(),type:"ingreso",description:"",amount:"",method:"transferencia"});
+    }catch(e){toast(e.message,"error");}
+  };
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Flujo de Caja" action="Movimiento" onAction={()=>setModal(true)}
+    <Head title="Flujo de Caja" action="Movimiento" onAction={()=>{setCFEdit(null);setCFForm({date:today(),type:"ingreso",description:"",amount:"",method:"transferencia"});setCFModal(true);}}
       extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Tipo","Descripción","Método","Valor"],filtered.map(e=>[e.date,e.type,e.description,e.method,e.amount]),`flujo-caja-${today()}.csv`)}>📥 Excel</Btn>}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
       <Stat small label="Saldo Total" value={fmtK(balance)} accent={balance>=0?C.accentL:C.rose}/>
@@ -1142,13 +1187,13 @@ function CashFlowModule({cashflow,reload,toast}){
       {[["all","Todos"],["ingreso","Ingresos"],["egreso","Egresos"]].map(([v,l])=><Pill key={v} label={l} active={filter===v} onClick={()=>setFilter(v)}/>)}
     </div>
     <Tabla cols={cols} rows={filtered} emptyMsg="Sin movimientos"/>
-    {modal&&<Modal title="Nuevo Movimiento" onClose={()=>{setModal(false);setForm(empty);}}>
+    {cfModal&&<Modal title={cfEdit?"Editar Movimiento":"Nuevo Movimiento"} onClose={()=>{setCFModal(false);setCFEdit(null);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/><Sel label="Tipo" value={form.type} onChange={f("type")} options={[{value:"ingreso",label:"Ingreso"},{value:"egreso",label:"Egreso"}]}/></div>
-        <Inp label="Descripción" value={form.description} onChange={f("description")} placeholder="Ej: Aporte de capital"/>
-        <Inp label="Valor" type="number" value={form.amount} onChange={f("amount")}/>
-        <Sel label="Método" value={form.method} onChange={f("method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
-        <Btn onClick={save} full>Registrar</Btn>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Fecha" type="date" value={cfForm.date} onChange={v=>setCFForm(p=>({...p,date:v}))}/><Sel label="Tipo" value={cfForm.type} onChange={v=>setCFForm(p=>({...p,type:v}))} options={[{value:"ingreso",label:"Ingreso"},{value:"egreso",label:"Egreso"}]}/></div>
+        <Inp label="Descripción" value={cfForm.description} onChange={v=>setCFForm(p=>({...p,description:v}))} placeholder="Ej: Aporte de capital"/>
+        <Inp label="Valor" type="number" value={cfForm.amount} onChange={v=>setCFForm(p=>({...p,amount:v}))}/>
+        <Sel label="Método" value={cfForm.method} onChange={v=>setCFForm(p=>({...p,method:v}))} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+        <Btn onClick={saveCF} full>{cfEdit?"Actualizar":"Registrar"}</Btn>
       </div>
     </Modal>}
   </div>;
@@ -1161,20 +1206,30 @@ function ExpensesModule({expenses,reload,toast}){
   const empty={date:today(),category:"Comisiones",description:"",amount:""};
   const[form,setForm]=useState(empty);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const save=async()=>{if(!form.amount||+form.amount<=0){toast("Valor inválido","error");return;}try{await api.addExpense(form);await reload();setModal(false);setForm(empty);toast("Gasto registrado");}catch(e){toast(e.message,"error");}};
+  const[editRow,setEditRow]=useState(null);
+  const openEdit=r=>{setEditRow(r);setForm({date:r.date,category:r.category||"Comisiones",description:r.description||"",amount:String(r.amount)});setModal(true);};
+  const save2=async()=>{
+    if(!form.amount||+form.amount<=0){toast("Valor inválido","error");return;}
+    try{
+      if(editRow){await api.updateExpense(editRow.id,form);toast("Gasto actualizado");}
+      else{await api.addExpense(form);toast("Gasto registrado");}
+      await reload();setModal(false);setEditRow(null);setForm(empty);
+    }catch(e){toast(e.message,"error");}
+  };
   const cols=[
     {key:"date",label:"Fecha"},{key:"category",label:"Categoría",render:v=><Badge label={v} color={CC[v]||C.slate}/>},
     {key:"description",label:"Descripción"},{key:"amount",label:"Valor",render:v=><b style={{color:C.rose}}>{fmt(v)}</b>},
-    {key:"del",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();try{await api.delExpense(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 7px",cursor:"pointer"}}>✕</button>},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={async e=>{e.stopPropagation();try{await api.delExpense(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Gastos Operativos" sub={`Total: ${fmt(expenses.reduce((a,e)=>a+e.amount,0))}`} action="Nuevo Gasto" onAction={()=>setModal(true)}/>
+    <Head title="Gastos Operativos" sub={`Total: ${fmt(expenses.reduce((a,e)=>a+e.amount,0))}`} action="Nuevo Gasto" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}/>
     <Tabla cols={cols} rows={expenses} emptyMsg="Sin gastos"/>
-    {modal&&<Modal title="Nuevo Gasto" onClose={()=>{setModal(false);setForm(empty);}}>
+    {modal&&<Modal title={editRow?"Editar Gasto":"Nuevo Gasto"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/><Sel label="Categoría" value={form.category} onChange={f("category")} options={CATS.map(c=>({value:c,label:c}))}/></div>
         <Inp label="Descripción" value={form.description} onChange={f("description")}/>
         <Inp label="Valor" type="number" value={form.amount} onChange={f("amount")}/>
-        <Btn onClick={save} full>Guardar</Btn>
+        <Btn onClick={save2} full>{editRow?"Actualizar":"Guardar"}</Btn>
       </div>
     </Modal>}
   </div>;
@@ -1426,4 +1481,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
