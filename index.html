@@ -616,11 +616,19 @@ function SalesModule({sales,inventory,clients,reload,toast}){
   const[sym,setSym]=useState("all");
   const empty={date:today(),symbol:"USDT",quantity:"",unit_price:"",client:"",pay_method:"transferencia",notes:"",payType:"contado",initial_paid:"",due_date:""};
   const[form,setForm]=useState(empty);const[file,setFile]=useState(null);const f=k=>v=>setForm(p=>({...p,[k]:v}));
+  const[editRow,setEditRow]=useState(null);
+  const openEdit=r=>{setEditRow(r);setForm({date:r.date,symbol:r.symbol,quantity:String(r.quantity),unit_price:String(r.unit_price),client:r.client||"",pay_method:r.pay_method||"transferencia",notes:r.notes||"",payType:"contado",initial_paid:"",due_date:r.due_date||"",paid:String(r.paid||0),status:r.status||"pagado"});setModal(true);};
+  const del=async r=>{if(!confirm(`¿Anular venta de ${fmtQ(r.quantity,r.symbol)} ${r.symbol}?`))return;try{await api.deleteSale(r.id);await reload();toast("Venta anulada");}catch(e){toast(e.message,"error");}};
   const curInv=inventory.find(i=>i.symbol===form.symbol);
   const estP=curInv&&form.quantity&&form.unit_price?(+form.quantity*+form.unit_price)-(+form.quantity*+curInv.avg_cost):null;
   const filtered=sales.filter(s=>inP(s.date,period,from,to)&&(sym==="all"||s.symbol===sym));
   const rev=filtered.reduce((a,s)=>a+s.total,0),gp=filtered.reduce((a,s)=>a+(+s.gross_profit||0),0);
   const save=async()=>{
+    if(editRow){
+      if(!form.quantity||!form.unit_price){toast("Completa campos","error");return;}
+      setSaving(true);try{await api.updateSale(editRow.id,form);await reload();setModal(false);setEditRow(null);setForm(empty);toast("Venta actualizada");}catch(e){toast(e.message,"error");}finally{setSaving(false);}
+      return;
+    }
     if(!form.quantity||!form.unit_price){toast("Completa campos","error");return;}
     if(!curInv||+curInv.quantity<+form.quantity){toast(`Insuficiente: ${fmtQ(curInv?.quantity||0,form.symbol)} ${form.symbol}`,"error");return;}
     setSaving(true);try{const r=await api.addSale(form,file);await reload();setModal(false);setForm(empty);setFile(null);toast(`Venta · Utilidad: ${fmt(r.gross_profit||0)}`);}
@@ -631,12 +639,14 @@ function SalesModule({sales,inventory,clients,reload,toast}){
     {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
     {key:"unit_price",label:"P.Venta",render:v=>fmt(v)},{key:"total",label:"Ingreso",render:v=>fmt(v)},
     {key:"gross_profit",label:"Utilidad",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmt(v)}</b>},
+    {key:"paid",label:"Pagado",render:v=><span style={{color:C.green}}>{fmt(v||0)}</span>},
     {key:"st",label:"Estado",render:(_,r)=><Badge label={stOf(r)} color={ST_C[stOf(r)]}/>},
     {key:"client",label:"Cliente"},
     {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:10}}>📎</a>:""},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Ventas" sub={`${sales.length} operaciones`} action="Nueva Venta" onAction={()=>setModal(true)}
+    <Head title="Ventas" sub={`${sales.length} operaciones`} action="Nueva Venta" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}
       extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","P.Venta","CPP","Ingreso","Costo","Utilidad","Pagado","Pendiente","Estado","Vence","Cliente","Método"],filtered.map(s=>[s.date,s.symbol,s.quantity,s.unit_price,s.avg_cost_used,s.total,s.cogs,s.gross_profit,s.paid||0,pendOf(s),stOf(s),s.due_date||"",s.client||"",s.pay_method||""]),`ventas-${today()}.csv`)}>📥 Excel</Btn>}/>
     <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -1121,8 +1131,8 @@ function SuppliersModule({suppliers,purchases,reload,toast}){
   const[modal,setModal]=useState(false);const empty={name:"",contact:"",phone:"",notes:""};
   const[form,setForm]=useState(empty);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const enriched=suppliers.map(s=>{const ops=purchases.filter(p=>norm(p.supplier)===norm(s.name));return{...s,_ops:ops.length,_vol:ops.reduce((a,p)=>a+p.total,0),_usdt:ops.filter(p=>p.symbol==="USDT").reduce((a,p)=>a+ +p.quantity,0),_pend:ops.reduce((a,p)=>a+pendOf(p),0)};}).sort((a,b)=>b._vol-a._vol);
-  const save=async()=>{if(!form.name){toast("Nombre requerido","error");return;}
   const[editRow,setEditRow]=useState(null);
+  const save=async()=>{if(!form.name){toast("Nombre requerido","error");return;}
   const openEdit=r=>{setEditRow(r);setForm({name:r.name||"",contact:r.contact||"",phone:r.phone||"",notes:r.notes||""});setModal(true);};
   const del=async r=>{if(!confirm(`¿Eliminar proveedor ${r.name}?`))return;try{await api.deleteSupplier(r.id);await reload();toast("Proveedor eliminado");}catch(e){toast(e.message,"error");};};
   const saveSup=async()=>{if(!form.name){toast("Nombre requerido","error");return;}try{if(editRow){await api.updateSupplier(editRow.id,form);toast("Proveedor actualizado");}else{await api.addSupplier(form);toast("Proveedor creado");}await reload();setModal(false);setEditRow(null);setForm(empty);}catch(e){toast(e.message,"error");};};
