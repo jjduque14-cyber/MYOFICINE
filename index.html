@@ -258,19 +258,23 @@ function buildLedger(name, sales, purchases, payments, filterKind="all", filterF
 // Merge clients + suppliers into unified TERCEROS list
 function buildTerceros(clients, suppliers){
   const map={};
-  clients.forEach(c=>{
+  (clients||[]).forEach(c=>{
+    if(!c||!c.name)return;
     const k=norm(c.name);
-    map[k]={...c, _tipo:"cliente", _isClient:true, _isSupplier:false};
+    map[k]={...c, name:c.name||"", tags:c.tags||[], _tipo:"cliente", _isClient:true, _isSupplier:false};
   });
-  suppliers.forEach(s=>{
+  (suppliers||[]).forEach(s=>{
+    if(!s||!s.name)return;
     const k=norm(s.name);
     if(map[k]){map[k]._isSupplier=true; map[k]._tipo="ambos";}
-    else map[k]={...s, _tipo:"proveedor", _isClient:false, _isSupplier:true};
+    else map[k]={...s, name:s.name||"", tags:s.tags||[], _tipo:"proveedor", _isClient:false, _isSupplier:true};
   });
-  return Object.values(map).sort((a,b)=>a.name.localeCompare(b.name));
+  return Object.values(map).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
 }
 function clientStats(client,sales,purchases,payments){
+  if(!client||!client.name)return{vs:[],cs:[],ps:[],ledger:[],saldo:0,totalVendido:0,totalComprado:0,volCOP:0,volBySym:{},profit:0,ops:0,first:null,last:null,since:null,daysSince:null,ticket:0,freqV:"0",freqC:"0",totalCobrado:0,totalPagado:0,porCobrar:0,porPagar:0,bestOp:0,worstOp:0,avgProfit:0};
   const n=norm(client.name);
+  sales=sales||[];purchases=purchases||[];payments=payments||[];
   const vs=sales.filter(s=>norm(s.client)===n);
   const cs=purchases.filter(p=>norm(p.supplier)===n);
   const ps=payments.filter(p=>norm(p.party)===n);
@@ -1384,7 +1388,11 @@ function TerceroLibroMayor({tercero, sales, purchases, payments, onClose, reload
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           <Btn variant="sec" small onClick={exportLedger}>📥 Excel</Btn>
           <Btn variant="sec" small onClick={()=>setPrinting(true)}>🖨️ PDF</Btn>
-          {tercero.phone&&<Btn variant="sec" small onClick={()=>window.open(`https://wa.me/57${(tercero.phone||"").replace(/[-\s]/g,"")}?text=${encodeURIComponent(`Hola ${tercero.name}, te comparto tu resumen comercial con nosotros.`)}`)}>📲 WA</Btn>}
+          {tercero.phone&&<Btn variant="sec" small onClick={()=>{
+            const cleanPhone=(tercero.phone||"").replace(/[^0-9]/g,"");
+            const msg=encodeURIComponent("Hola "+tercero.name+", te comparto tu resumen comercial con nosotros.");
+            window.open("https://wa.me/57"+cleanPhone+"?text="+msg);
+          }}>📲 WA</Btn>}
         </div>
       </div>
     </Modal>
@@ -1582,7 +1590,6 @@ function ExpensesModule({expenses,reload,toast}){
   const CC={Arriendo:C.blue,Servicios:C.green,Comisiones:C.amber,Publicidad:C.purple,"Nómina":C.rose,Otros:C.slate};
   const empty={date:today(),category:"Comisiones",description:"",amount:""};
   const[form,setForm]=useState(empty);const f=k=>v=>setForm(p=>({...p,[k]:v}));
-  const save=async()=>{if(!form.amount||+form.amount<=0){toast("Valor inválido","error");return;}try{await api.addExpense(form);await reload();setModal(false);setForm(empty);toast("Gasto registrado");}catch(e){toast(e.message,"error");}};
   const[editRow,setEditRow]=useState(null);
   const openEdit=r=>{setEditRow(r);setForm({date:r.date,category:r.category||"Comisiones",description:r.description||"",amount:String(r.amount)});setModal(true);};
   const save2=async()=>{
@@ -1774,8 +1781,16 @@ function App(){
     setPayments(pa);setCashflow(cf);setExpenses(ex);setGoals(go);setClosings(cz);
   };
 
+  const[fatalError,setFatalError]=useState(null);
   useEffect(()=>{
-    api.session().then(async u=>{if(u){setUser(u);setLoading(true);try{await reload();}catch(e){}setLoading(false);}}).finally(()=>setChecking(false));
+    api.session().then(async u=>{
+      if(u){
+        setUser(u);setLoading(true);
+        try{await reload();}
+        catch(e){setFatalError(e.message||"Error desconocido al cargar datos");}
+        setLoading(false);
+      }
+    }).catch(e=>setFatalError(e.message)).finally(()=>setChecking(false));
   },[]);
 
   const handleLogin=async u=>{setUser(u);setLoading(true);try{await reload();}catch(e){toast("Error cargando","error");}setLoading(false);};
@@ -1784,6 +1799,14 @@ function App(){
   const isMob=W<768;const SW=222;
 
   if(checking)return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:13}}>Iniciando...</div>;
+  if(fatalError)return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:C.bg}}>
+    <div style={{background:C.card,border:`1px solid ${C.rose}`,borderRadius:14,padding:28,maxWidth:480,textAlign:"center"}}>
+      <div style={{fontSize:40,marginBottom:12}}>⚠️</div>
+      <h3 style={{color:C.text,marginBottom:8}}>Error cargando datos</h3>
+      <p style={{color:C.muted,fontSize:13,marginBottom:16,fontFamily:"monospace",background:C.panel,padding:10,borderRadius:8,wordBreak:"break-word"}}>{fatalError}</p>
+      <Btn onClick={()=>{setFatalError(null);setChecking(true);window.location.reload();}} full>Reintentar</Btn>
+    </div>
+  </div>;
   if(!user)return <Login onLogin={handleLogin}/>;
 
   const nav=NAV.find(n=>n.id===active)||NAV[0];
@@ -1856,5 +1879,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
 
