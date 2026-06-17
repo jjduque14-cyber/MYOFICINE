@@ -48,12 +48,25 @@ input[type=file]{color:var(--muted);font-size:12px}
 </head>
 <body>
 <div id="root"></div>
+<script>
+function showErr(msg){
+  document.getElementById("root").innerHTML =
+    '<div style="background:#1a0e0e;color:#ff8080;font-family:monospace;font-size:13px;padding:20px;white-space:pre-wrap;min-height:100vh;">ERROR DETECTADO:\n\n' +
+    String(msg).replace(/</g,"&lt;") + '</div>';
+}
+window.addEventListener("error", function(e){
+  showErr((e.message||"error")+"\n\nArchivo: "+(e.filename||"?")+"\nLinea: "+(e.lineno||"?")+" Col: "+(e.colno||"?")+(e.error&&e.error.stack?"\n\n"+e.error.stack:""));
+});
+window.addEventListener("unhandledrejection", function(e){
+  showErr("Promise rechazada: "+(e.reason&&e.reason.message?e.reason.message:e.reason));
+});
+</script>
 <script type="text/babel" data-presets="react">
 const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let UID=null;
 
-//  Design tokens 
+// ─── Design tokens ────────────────────────────────────────────────────────
 const C={
   bg:"#060D1A",panel:"#0A1628",card:"#0F1E35",card2:"#142440",border:"#1A2E4A",
   accent:"#26A17B",accentL:"#2DC48A",blue:"#3B6FE8",green:"#0EA572",
@@ -66,9 +79,9 @@ const TAGS=["VIP","Mayorista","Frecuente","Corporativo","Riesgo Alto"];
 const TAG_C={VIP:"#D97706",Mayorista:"#3B6FE8",Frecuente:"#0EA572",Corporativo:"#8B5CF6","Riesgo Alto":"#E03E52"};
 const METHODS=["transferencia","efectivo","nequi","daviplata","binance pay","cripto","otro"];
 const TREAS_TYPES=["efectivo","banco","nequi","daviplata","binance","wallet","otro"];
-const TREAS_ICONS={efectivo:"",banco:"",nequi:"",daviplata:"",binance:"",wallet:"",otro:""};
+const TREAS_ICONS={efectivo:"💵",banco:"🏦",nequi:"💜",daviplata:"🔵",binance:"🟡",wallet:"👛",otro:"💳"};
 
-//  Helpers 
+// ─── Helpers ──────────────────────────────────────────────────────────────
 const fmt=n=>new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0}).format(n||0);
 const fmtK=n=>{const a=Math.abs(n||0);if(a>=1e9)return`$${(n/1e9).toFixed(1)}MM`;if(a>=1e6)return`$${(n/1e6).toFixed(1)}M`;if(a>=1e3)return`$${(n/1e3).toFixed(0)}K`;return`$${Math.round(n||0)}`;};
 const fmtQ=(n,s)=>{const d=s==="BTC"?8:(s==="ETH"||s==="SOL")?4:2;return parseFloat((+n||0).toFixed(d)).toLocaleString("es-CO",{maximumFractionDigits:d});};
@@ -93,7 +106,7 @@ function stOf(r){if(pendOf(r)<=0.01)return"pagado";if(r.due_date&&r.due_date<tod
 const moraOf=r=>(r.due_date&&r.due_date<today()&&pendOf(r)>0.01)?dBetween(r.due_date,today()):0;
 const ST_C={pagado:C.green,parcial:C.amber,pendiente:C.blue,vencido:C.rose};
 
-//  API layer 
+// ─── API layer ────────────────────────────────────────────────────────────
 const api={
   async session(){const{data}=await sb.auth.getSession();if(!data?.session)return null;UID=data.session.user.id;const{data:p}=await sb.from("profiles").select("*").eq("id",UID).maybeSingle();return{...data.session.user,...(p||{})};},
   async login(email,pass){const{data,error}=await sb.auth.signInWithPassword({email,password:pass});if(error)throw error;UID=data.user.id;const{data:p}=await sb.from("profiles").select("*").eq("id",UID).maybeSingle();return{...data.user,...(p||{})};},
@@ -218,12 +231,12 @@ const api={
   async addClosing(c){const{data,error}=await sb.from("crypto_closings").insert({...c,user_id:UID}).select().single();if(error)throw error;return data;},
 };
 
-//  Ledger & client stats 
+// ─── Ledger & client stats ─────────────────────────────────────────────
 function buildLedger(name,sales,purchases,payments){
   const n=norm(name),rows=[];
-  sales.filter(s=>norm(s.client)===n).forEach(s=>rows.push({id:"v"+s.id,date:s.date,ts:s.created_at||"",doc:`VTA-${s.id.slice(-6).toUpperCase()}`,concept:`Le vendi ${fmtQ(s.quantity,s.symbol)} ${s.symbol} @ ${fmt(s.unit_price)}`,debit:+s.total,credit:0,kind:"venta",receipt:s.receipt_url}));
-  purchases.filter(p=>norm(p.supplier)===n).forEach(p=>rows.push({id:"c"+p.id,date:p.date,ts:p.created_at||"",doc:`CMP-${p.id.slice(-6).toUpperCase()}`,concept:`Le compre ${fmtQ(p.quantity,p.symbol)} ${p.symbol} @ ${fmt(p.unit_cost)}`,debit:0,credit:+p.total,kind:"compra",receipt:p.receipt_url}));
-  payments.filter(p=>norm(p.party)===n).forEach(p=>rows.push({id:"p"+p.id,date:p.date,ts:p.created_at||"",doc:`PAG-${p.id.slice(-6).toUpperCase()}`,concept:(p.direction==="recibido"?"Pago recibido":"Pago realizado")+(p.notes?` - ${p.notes}`:""),debit:p.direction==="realizado"?+p.amount:0,credit:p.direction==="recibido"?+p.amount:0,kind:"pago",receipt:p.receipt_url}));
+  sales.filter(s=>norm(s.client)===n).forEach(s=>rows.push({id:"v"+s.id,date:s.date,ts:s.created_at||"",doc:`VTA-${s.id.slice(-6).toUpperCase()}`,concept:`Le vendí ${fmtQ(s.quantity,s.symbol)} ${s.symbol} @ ${fmt(s.unit_price)}`,debit:+s.total,credit:0,kind:"venta",receipt:s.receipt_url}));
+  purchases.filter(p=>norm(p.supplier)===n).forEach(p=>rows.push({id:"c"+p.id,date:p.date,ts:p.created_at||"",doc:`CMP-${p.id.slice(-6).toUpperCase()}`,concept:`Le compré ${fmtQ(p.quantity,p.symbol)} ${p.symbol} @ ${fmt(p.unit_cost)}`,debit:0,credit:+p.total,kind:"compra",receipt:p.receipt_url}));
+  payments.filter(p=>norm(p.party)===n).forEach(p=>rows.push({id:"p"+p.id,date:p.date,ts:p.created_at||"",doc:`PAG-${p.id.slice(-6).toUpperCase()}`,concept:(p.direction==="recibido"?"Pago recibido":"Pago realizado")+(p.notes?` · ${p.notes}`:""),debit:p.direction==="realizado"?+p.amount:0,credit:p.direction==="recibido"?+p.amount:0,kind:"pago",receipt:p.receipt_url}));
   rows.sort((a,b)=>a.date===b.date?String(a.ts).localeCompare(String(b.ts)):a.date.localeCompare(b.date));
   let saldo=0;rows.forEach(r=>{saldo+=r.debit-r.credit;r.saldo=saldo;});
   return rows;
@@ -257,7 +270,7 @@ function clientStats(client,sales,purchases,payments){
   };
 }
 
-//  UI Primitives 
+// ─── UI Primitives ────────────────────────────────────────────────────────
 function Spark({data,color=C.accent,h=34,w=80}){
   if(!data||data.length<2)return null;
   const min=Math.min(...data),max=Math.max(...data),r=max-min||1;
@@ -317,7 +330,7 @@ function Modal({title,children,onClose,wide,ultra}){
     <div className="fade-in" style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:20,width:"100%",maxWidth:ultra?1100:wide?760:460,maxHeight:"94vh",overflowY:"auto"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h3 style={{margin:0,color:C.text,fontSize:15,fontWeight:700}}>{title}</h3>
-        <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,fontSize:20,cursor:"pointer",lineHeight:1}}></button>
+        <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>
       </div>
       {children}
     </div>
@@ -346,7 +359,7 @@ function Tabla({cols,rows,onRowClick,emptyMsg="Sin registros"}){
       <tbody>
         {rows.length===0&&<tr><td colSpan={cols.length} style={{padding:32,textAlign:"center",color:C.muted,fontSize:12}}>{emptyMsg}</td></tr>}
         {rows.map((row,ri)=><tr key={row.id||ri} className="hover-row" onClick={()=>onRowClick&&onRowClick(row)} style={{borderBottom:`1px solid ${C.border}`,cursor:onRowClick?"pointer":"default"}}>
-          {cols.map(c=><td key={c.key} style={{padding:"8px 12px",color:C.text,whiteSpace:"nowrap"}}>{c.render?c.render(row[c.key],row):(row[c.key]??"-")}</td>)}
+          {cols.map(c=><td key={c.key} style={{padding:"8px 12px",color:C.text,whiteSpace:"nowrap"}}>{c.render?c.render(row[c.key],row):(row[c.key]??"—")}</td>)}
         </tr>)}
       </tbody>
     </table>
@@ -355,7 +368,7 @@ function Tabla({cols,rows,onRowClick,emptyMsg="Sin registros"}){
 function Toast({msg,type,onDone}){
   useEffect(()=>{const t=setTimeout(onDone,3500);return()=>clearTimeout(t);},[]);
   return <div className="fade-in" style={{position:"fixed",bottom:20,right:14,left:14,maxWidth:400,marginLeft:"auto",background:C.card,border:`1px solid ${type==="error"?C.rose:C.green}`,borderRadius:9,padding:"11px 15px",zIndex:999,color:C.text,fontSize:12,fontWeight:500,boxShadow:"0 8px 24px rgba(0,0,0,.5)",display:"flex",gap:8,alignItems:"center"}}>
-    <span style={{color:type==="error"?C.rose:C.green,fontSize:14}}>{type==="error"?"":""}</span>{msg}
+    <span style={{color:type==="error"?C.rose:C.green,fontSize:14}}>{type==="error"?"✗":"✓"}</span>{msg}
   </div>;
 }
 function useToast(){
@@ -365,16 +378,16 @@ function useToast(){
 }
 function PeriodBar({period,setPeriod,from,setFrom,to,setTo}){
   return <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
-    {[["today","Hoy"],["week","7D"],["month","Mes"],["year","Ano"],["all","Todo"],["custom","Rango"]].map(([v,l])=><Pill key={v} label={l} active={period===v} onClick={()=>setPeriod(v)}/>)}
+    {[["today","Hoy"],["week","7D"],["month","Mes"],["year","Año"],["all","Todo"],["custom","Rango"]].map(([v,l])=><Pill key={v} label={l} active={period===v} onClick={()=>setPeriod(v)}/>)}
     {period==="custom"&&<React.Fragment>
       <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:7,padding:"6px 9px",color:C.text,fontSize:11}}/>
-      <span style={{color:C.muted,fontSize:11}}>-></span>
+      <span style={{color:C.muted,fontSize:11}}>→</span>
       <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:7,padding:"6px 9px",color:C.text,fontSize:11}}/>
     </React.Fragment>}
   </div>;
 }
 
-//  AUTH (Login / Register / Reset Password) 
+// ─── AUTH (Login / Register / Reset Password) ─────────────────────────────
 function Login({onLogin}){
   const[screen,setScreen]=useState("login");
   const[err,setErr]=useState("");const[ok,setOk]=useState("");const[loading,setLoading]=useState(false);
@@ -392,15 +405,15 @@ function Login({onLogin}){
   const doLogin=async()=>{
     setErr("");setLoading(true);
     try{onLogin(await api.login(email,pass));}
-    catch(e){setErr("Correo o contrasena incorrectos");}
+    catch(e){setErr("Correo o contraseña incorrectos");}
     finally{setLoading(false);}
   };
 
   const doRegister=async()=>{
     setErr("");
-    if(!reg.firstName||!reg.email||!reg.pass){setErr("Nombre, correo y contrasena son obligatorios");return;}
-    if(reg.pass!==reg.pass2){setErr("Las contrasenas no coinciden");return;}
-    if(reg.pass.length<6){setErr("La contrasena debe tener minimo 6 caracteres");return;}
+    if(!reg.firstName||!reg.email||!reg.pass){setErr("Nombre, correo y contraseña son obligatorios");return;}
+    if(reg.pass!==reg.pass2){setErr("Las contraseñas no coinciden");return;}
+    if(reg.pass.length<6){setErr("La contraseña debe tener mínimo 6 caracteres");return;}
     setLoading(true);
     try{
       const{data,error}=await sb.auth.signUp({email:reg.email,password:reg.pass});
@@ -414,11 +427,11 @@ function Login({onLogin}){
           phone:reg.phone,role:"admin",business:"Mi Empresa"
         });
       }
-      setOk(" Cuenta creada. Revisa tu correo para confirmar y luego inicia sesion.");
+      setOk("✓ Cuenta creada. Revisa tu correo para confirmar y luego inicia sesión.");
       setScreen("login");
     }
     catch(e){
-      if(e.message.includes("already registered"))setErr("Este correo ya tiene una cuenta. Inicia sesion.");
+      if(e.message.includes("already registered"))setErr("Este correo ya tiene una cuenta. Inicia sesión.");
       else setErr(e.message);
     }
     finally{setLoading(false);}
@@ -429,16 +442,16 @@ function Login({onLogin}){
     try{
       const{error}=await sb.auth.resetPasswordForEmail(resetEmail,{redirectTo:window.location.origin});
       if(error)throw error;
-      setOk(" Revisa tu correo - te enviamos un enlace para restablecer tu contrasena.");
+      setOk("✓ Revisa tu correo — te enviamos un enlace para restablecer tu contraseña.");
     }
     catch(e){setErr(e.message);}
     finally{setLoading(false);}
   };
 
   const brand=<div style={{textAlign:"center",marginBottom:24}}>
-    <div style={{fontSize:44,marginBottom:6,filter:"drop-shadow(0 0 12px rgba(38,161,123,.4))"}}></div>
+    <div style={{fontSize:44,marginBottom:6,filter:"drop-shadow(0 0 12px rgba(38,161,123,.4))"}}>₿</div>
     <h1 style={{margin:0,fontSize:21,fontWeight:800,background:"linear-gradient(135deg,#26A17B,#2DC48A)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Casa de Cambio Pro</h1>
-    <p style={{margin:"4px 0 0",fontSize:11,color:C.muted}}>Plataforma OTC - v3.0</p>
+    <p style={{margin:"4px 0 0",fontSize:11,color:C.muted}}>Plataforma OTC · v3.0</p>
   </div>;
 
   const wrap=ch=><div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -450,22 +463,22 @@ function Login({onLogin}){
   const ErrBox=()=>err?<p style={{margin:0,fontSize:12,color:C.rose,background:"#2D1218",padding:"8px 11px",borderRadius:6}}>{err}</p>:null;
   const OkBox=()=>ok?<p style={{margin:0,fontSize:12,color:C.green,background:"#0a1f14",padding:"8px 11px",borderRadius:6}}>{ok}</p>:null;
 
-  //  LOGIN 
+  // ── LOGIN ──────────────────────────────────────────────────
   if(screen==="login") return wrap(<React.Fragment>
     {brand}
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <Inp label="Correo" value={email} onChange={setEmail} placeholder="tu@correo.com"/>
-      <Inp label="Contrasena" type="password" value={pass} onChange={setPass} placeholder=""/>
+      <Inp label="Contraseña" type="password" value={pass} onChange={setPass} placeholder="••••••••"/>
       <ErrBox/><OkBox/>
       <Btn onClick={doLogin} disabled={loading} full>{loading?"Ingresando...":"Ingresar"}</Btn>
       <div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
-        <button onClick={()=>{setErr("");setOk("");setScreen("reset");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer"}}>Olvidaste tu contrasena?</button>
-        <button onClick={()=>{setErr("");setOk("");setScreen("register");}} style={{background:"none",border:"none",color:C.accentL,fontSize:11,cursor:"pointer",fontWeight:600}}>Crear cuenta -></button>
+        <button onClick={()=>{setErr("");setOk("");setScreen("reset");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer"}}>¿Olvidaste tu contraseña?</button>
+        <button onClick={()=>{setErr("");setOk("");setScreen("register");}} style={{background:"none",border:"none",color:C.accentL,fontSize:11,cursor:"pointer",fontWeight:600}}>Crear cuenta →</button>
       </div>
     </div>
   </React.Fragment>);
 
-  //  REGISTRO 
+  // ── REGISTRO ───────────────────────────────────────────────
   if(screen==="register") return wrap(<React.Fragment>
     {brand}
     <h3 style={{margin:"0 0 14px",fontSize:15,fontWeight:700,textAlign:"center"}}>Crear cuenta nueva</h3>
@@ -474,39 +487,39 @@ function Login({onLogin}){
         <Inp label="Nombre *" value={reg.firstName} onChange={fr("firstName")} placeholder="Juan"/>
         <Inp label="Apellido" value={reg.lastName} onChange={fr("lastName")} placeholder="Duque"/>
       </div>
-      <Inp label="Telefono" value={reg.phone} onChange={fr("phone")} placeholder="+57 300 000 0000"/>
+      <Inp label="Teléfono" value={reg.phone} onChange={fr("phone")} placeholder="+57 300 000 0000"/>
       <Inp label="Correo *" value={reg.email} onChange={fr("email")} placeholder="tu@correo.com"/>
-      <Inp label="Contrasena *" type="password" value={reg.pass} onChange={fr("pass")} placeholder="Minimo 6 caracteres"/>
-      <Inp label="Confirmar contrasena *" type="password" value={reg.pass2} onChange={fr("pass2")} placeholder="Repite la contrasena"/>
+      <Inp label="Contraseña *" type="password" value={reg.pass} onChange={fr("pass")} placeholder="Mínimo 6 caracteres"/>
+      <Inp label="Confirmar contraseña *" type="password" value={reg.pass2} onChange={fr("pass2")} placeholder="Repite la contraseña"/>
       <ErrBox/>
       <Btn onClick={doRegister} disabled={loading} full>{loading?"Creando cuenta...":"Crear Cuenta"}</Btn>
-      <button onClick={()=>{setErr("");setOk("");setScreen("login");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",textAlign:"center",marginTop:2}}><- Volver al inicio de sesion</button>
+      <button onClick={()=>{setErr("");setOk("");setScreen("login");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",textAlign:"center",marginTop:2}}>← Volver al inicio de sesión</button>
     </div>
   </React.Fragment>);
 
-  //  RECUPERAR CONTRASENA 
+  // ── RECUPERAR CONTRASEÑA ───────────────────────────────────
   if(screen==="reset") return wrap(<React.Fragment>
     {brand}
-    <h3 style={{margin:"0 0 6px",fontSize:15,fontWeight:700,textAlign:"center"}}>Recuperar contrasena</h3>
+    <h3 style={{margin:"0 0 6px",fontSize:15,fontWeight:700,textAlign:"center"}}>Recuperar contraseña</h3>
     <p style={{margin:"0 0 14px",fontSize:12,color:C.muted,textAlign:"center"}}>Te enviamos un enlace a tu correo</p>
     <div style={{display:"flex",flexDirection:"column",gap:9}}>
       <Inp label="Correo" value={resetEmail} onChange={setResetEmail} placeholder="tu@correo.com"/>
       <ErrBox/><OkBox/>
       {!ok&&<Btn onClick={doReset} disabled={loading} full>{loading?"Enviando...":"Enviar enlace"}</Btn>}
-      <button onClick={()=>{setErr("");setOk("");setScreen("login");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",textAlign:"center"}}><- Volver al inicio de sesion</button>
+      <button onClick={()=>{setErr("");setOk("");setScreen("login");}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",textAlign:"center"}}>← Volver al inicio de sesión</button>
     </div>
   </React.Fragment>);
 
   return null;
 }
 
-//  PAYMENT MODAL 
+// ─── PAYMENT MODAL ────────────────────────────────────────────────────────
 function PaymentModal({ctx,onClose,reload,toast}){
   const[form,setForm]=useState({date:today(),amount:ctx.maxAmount?String(ctx.maxAmount):"",method:"transferencia",notes:""});
   const[file,setFile]=useState(null);const[saving,setSaving]=useState(false);
   const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const save=async()=>{
-    if(!form.amount||+form.amount<=0){toast("Valor invalido","error");return;}
+    if(!form.amount||+form.amount<=0){toast("Valor inválido","error");return;}
     setSaving(true);
     try{await api.addPayment({...form,party:ctx.party,direction:ctx.direction,reference_type:ctx.reference_type,reference_id:ctx.reference_id},file);await reload();onClose();toast(`Pago ${ctx.direction} registrado`);}
     catch(e){toast(e.message,"error");}finally{setSaving(false);}
@@ -514,26 +527,26 @@ function PaymentModal({ctx,onClose,reload,toast}){
   return <Modal title={ctx.title||"Pago"} onClose={onClose}>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{background:`${ctx.direction==="recibido"?C.green:C.rose}14`,border:`1px solid ${ctx.direction==="recibido"?C.green:C.rose}`,borderRadius:7,padding:"8px 12px",fontSize:11,color:C.text}}>
-        {ctx.direction==="recibido"?" RECIBES de":" PAGAS a"} <b>{ctx.party}</b>
-        {ctx.maxAmount>0&&<span> - Pendiente: <b style={{color:C.amber}}>{fmt(ctx.maxAmount)}</b></span>}
+        {ctx.direction==="recibido"?"💰 RECIBES de":"💸 PAGAS a"} <b>{ctx.party}</b>
+        {ctx.maxAmount>0&&<span> · Pendiente: <b style={{color:C.amber}}>{fmt(ctx.maxAmount)}</b></span>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
         <Inp label="Valor" type="number" value={form.amount} onChange={f("amount")}/>
       </div>
-      <Sel label="Metodo" value={form.method} onChange={f("method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
-      <Inp label="Notas" value={form.notes} onChange={f("notes")} placeholder="Descripcion del pago"/>
+      <Sel label="Método" value={form.method} onChange={f("method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+      <Inp label="Notas" value={form.notes} onChange={f("notes")} placeholder="Descripción del pago"/>
       <div style={{display:"flex",flexDirection:"column",gap:3}}>
-        <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}> Comprobante</label>
+        <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>📎 Comprobante</label>
         <input type="file" accept="image/*,.pdf" onChange={e=>setFile(e.target.files&&e.target.files[0]||null)}/>
-        {file&&<span style={{fontSize:10,color:C.green}}> {file.name}</span>}
+        {file&&<span style={{fontSize:10,color:C.green}}>✓ {file.name}</span>}
       </div>
       <Btn onClick={save} disabled={saving} full>{saving?"Guardando...":"Registrar Pago"}</Btn>
     </div>
   </Modal>;
 }
 
-//  DASHBOARD 
+// ─── DASHBOARD ────────────────────────────────────────────────────────────
 function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,expenses,setActive}){
   const[rank,setRank]=useState("profit");
 
@@ -561,7 +574,7 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
   const avgSell=mSU.reduce((a,s)=>a+ +s.quantity,0)>0?tot(mSU)/mSU.reduce((a,s)=>a+ +s.quantity,0):0;
   const spread=avgBuy>0&&avgSell>0?avgSell-avgBuy:0;
 
-  // Series 14 dias
+  // Series 14 días
   const last14=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-(13-i));return d.toISOString().split("T")[0];});
   const profitSeries=last14.map(d=>profit(sales.filter(s=>s.date===d)));
   const volSeries=last14.map(d=>tot(sales.filter(s=>s.date===d))/1e6);
@@ -582,15 +595,15 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
   const avgTick=sales.length?tot(sales)/sales.length:0;
   const bigOps=[...sales,...purchases].filter(o=>dBetween(o.date,today())<=3&&o.total>=Math.max(100e6,avgTick*5));
   const alerts=[];
-  if(vencidos.length)alerts.push({c:C.rose,icon:"",msg:`${vencidos.length} cuenta(s) VENCIDA(S) - ${fmt(vencidos.reduce((a,s)=>a+pendOf(s),0))}`,go:"cartera"});
-  if(capital<0)alerts.push({c:C.rose,icon:"",msg:`Caja negativa: ${fmt(capital)}`,go:"cash"});
-  if(porCobrar>0&&!vencidos.length)alerts.push({c:C.amber,icon:"",msg:`Por cobrar: ${fmt(porCobrar)}`,go:"cartera"});
-  if(porPagar>0)alerts.push({c:C.blue,icon:"",msg:`Por pagar proveedores: ${fmt(porPagar)}`,go:"cartera"});
-  if(usdtInv&&+usdtInv.quantity<=0)alerts.push({c:C.rose,icon:"",msg:"Sin inventario USDT",go:"buy"});
-  if(bigOps.length)alerts.push({c:C.purple,icon:"",msg:`${bigOps.length} operacion(es) inusual(es) (ultimas 72h)`,go:"sell"});
+  if(vencidos.length)alerts.push({c:C.rose,icon:"🔴",msg:`${vencidos.length} cuenta(s) VENCIDA(S) · ${fmt(vencidos.reduce((a,s)=>a+pendOf(s),0))}`,go:"cartera"});
+  if(capital<0)alerts.push({c:C.rose,icon:"⚠️",msg:`Caja negativa: ${fmt(capital)}`,go:"cash"});
+  if(porCobrar>0&&!vencidos.length)alerts.push({c:C.amber,icon:"🟡",msg:`Por cobrar: ${fmt(porCobrar)}`,go:"cartera"});
+  if(porPagar>0)alerts.push({c:C.blue,icon:"🔵",msg:`Por pagar proveedores: ${fmt(porPagar)}`,go:"cartera"});
+  if(usdtInv&&+usdtInv.quantity<=0)alerts.push({c:C.rose,icon:"📉",msg:"Sin inventario USDT",go:"buy"});
+  if(bigOps.length)alerts.push({c:C.purple,icon:"💎",msg:`${bigOps.length} operación(es) inusual(es) (últimas 72h)`,go:"sell"});
   if(mGoal&&+mGoal.profit_goal>0){const pct=profit(mS)/+mGoal.profit_goal*100;const dayPct=new Date().getDate()/new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate()*100;
-    if(pct>=90&&pct<100)alerts.push({c:C.green,icon:"",msg:`Meta utilidad: ${Math.round(pct)}% - casi!`,go:"goals"});
-    else if(pct<dayPct-30)alerts.push({c:C.amber,icon:"",msg:`Meta atrasada: ${Math.round(pct)}% (esperado ${Math.round(dayPct)}%)`,go:"goals"});
+    if(pct>=90&&pct<100)alerts.push({c:C.green,icon:"🎯",msg:`Meta utilidad: ${Math.round(pct)}% · ¡casi!`,go:"goals"});
+    else if(pct<dayPct-30)alerts.push({c:C.amber,icon:"⏳",msg:`Meta atrasada: ${Math.round(pct)}% (esperado ${Math.round(dayPct)}%)`,go:"goals"});
   }
 
   const gW="repeat(auto-fit,minmax(145px,1fr))";
@@ -599,7 +612,7 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
     {/* Alertas */}
     {alerts.length>0&&<div style={{display:"flex",flexDirection:"column",gap:5}}>
       {alerts.map((a,i)=><button key={i} onClick={()=>setActive(a.go)} style={{display:"flex",alignItems:"center",gap:10,background:`${a.c}12`,border:`1px solid ${a.c}40`,borderRadius:8,padding:"9px 13px",color:C.text,fontSize:12,cursor:"pointer",textAlign:"left"}}>
-        <span>{a.icon}</span><span style={{flex:1}}>{a.msg}</span><span style={{color:a.c,fontSize:10}}>Ver -></span>
+        <span>{a.icon}</span><span style={{flex:1}}>{a.msg}</span><span style={{color:a.c,fontSize:10}}>Ver →</span>
       </button>)}
     </div>}
 
@@ -610,12 +623,12 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
       <Stat label="Valor Inventario" value={fmtK(totalInv)} accent={C.amber} sub="COP invertidos"/>
       <Stat label="Por Cobrar" value={fmtK(porCobrar)} accent={porCobrar>0?C.amber:C.muted} sub={`${sales.filter(s=>pendOf(s)>0.01).length} cuentas`} onClick={()=>setActive("cartera")}/>
       <Stat label="Por Pagar" value={fmtK(porPagar)} accent={porPagar>0?C.rose:C.muted} sub={`${purchases.filter(p=>pendOf(p)>0.01).length} cuentas`} onClick={()=>setActive("cartera")}/>
-      <Stat label="Clientes Activos" value={activos.size} sub="ultimos 30 dias" onClick={()=>setActive("clients")}/>
+      <Stat label="Clientes Activos" value={activos.size} sub="últimos 30 días" onClick={()=>setActive("clients")}/>
     </div>
 
     {/* Utilidades */}
     <div style={{display:"grid",gridTemplateColumns:gW,gap:8}}>
-      <Stat label="Utilidad Hoy" value={fmtK(profit(dS))} accent={profit(dS)>=0?C.green:C.rose} sub={`${dS.length}v - ${dP.length}c`}/>
+      <Stat label="Utilidad Hoy" value={fmtK(profit(dS))} accent={profit(dS)>=0?C.green:C.rose} sub={`${dS.length}v · ${dP.length}c`}/>
       <Stat label="Utilidad Semana" value={fmtK(profit(wS))} accent={C.green}/>
       <Stat label="Utilidad Mes" value={fmtK(profit(mS))} accent={C.green} spark={profitSeries} sparkColor={C.green}/>
       <Stat label="Utilidad Neta Mes" value={fmtK(profit(mS)-mExp)} accent={profit(mS)-mExp>=0?C.accentL:C.rose} sub={`gastos: ${fmtK(mExp)}`}/>
@@ -625,31 +638,31 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
 
     {/* USDT indicators */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:8}}>
-      <Stat small label="Precio Compra USDT" value={avgBuy>0?fmt(avgBuy):"-"} sub="promedio mes"/>
-      <Stat small label="Precio Venta USDT" value={avgSell>0?fmt(avgSell):"-"} sub="promedio mes"/>
-      <Stat small label="Spread" value={spread>0?fmt(spread):"-"} accent={C.accentL} sub={spread>0&&avgBuy>0?`${((spread/avgBuy)*100).toFixed(2)}%`:""}/>
-      <Stat small label="Utilidad Ano" value={fmtK(profit(inArr(sales,"year")))} accent={C.accentL}/>
-      <Stat small label="Utilidad Acumulada" value={fmtK(profit(sales))} accent={C.green} sub="historica"/>
+      <Stat small label="Precio Compra USDT" value={avgBuy>0?fmt(avgBuy):"—"} sub="promedio mes"/>
+      <Stat small label="Precio Venta USDT" value={avgSell>0?fmt(avgSell):"—"} sub="promedio mes"/>
+      <Stat small label="Spread" value={spread>0?fmt(spread):"—"} accent={C.accentL} sub={spread>0&&avgBuy>0?`${((spread/avgBuy)*100).toFixed(2)}%`:""}/>
+      <Stat small label="Utilidad Año" value={fmtK(profit(inArr(sales,"year")))} accent={C.accentL}/>
+      <Stat small label="Utilidad Acumulada" value={fmtK(profit(sales))} accent={C.green} sub="histórica"/>
       <Stat small label="Margen Mes" value={`${tot(mS)>0?((profit(mS)/tot(mS))*100).toFixed(2):0}%`} accent={C.accentL}/>
     </div>
 
-    {/* Graficas + Rankings */}
+    {/* Gráficas + Rankings */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(270px,1fr))",gap:12}}>
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16}}>
         <h4 style={{margin:"0 0 4px",fontSize:13,fontWeight:600}}>Volumen de Ventas</h4>
-        <p style={{margin:"0 0 10px",fontSize:10,color:C.muted}}>Ultimos 14 dias (M COP)</p>
+        <p style={{margin:"0 0 10px",fontSize:10,color:C.muted}}>Últimos 14 días (M COP)</p>
         {volSeries.some(v=>v>0)?<Bars data={volSeries} labels={dayLbls} color={C.accent} h={90}/>:<p style={{color:C.muted,fontSize:12,padding:"20px 0",textAlign:"center"}}>Sin ventas recientes</p>}
       </div>
 
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16}}>
-        <h4 style={{margin:"0 0 8px",fontSize:13,fontWeight:600}}> Top Clientes</h4>
+        <h4 style={{margin:"0 0 8px",fontSize:13,fontWeight:600}}>🏆 Top Clientes</h4>
         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
           {[["profit","Utilidad"],["vol","Volumen"],["ops","Ops"],["sells","Ventas"],["buys","Compras"]].map(([v,l])=><Pill key={v} label={l} active={rank===v} onClick={()=>setRank(v)}/>)}
         </div>
         {top5.length===0&&<p style={{color:C.muted,fontSize:12}}>Sin operaciones</p>}
         {top5.map((c,i)=><div key={i} style={{marginBottom:8}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-            <span style={{fontSize:12}}>{["","","","4.","5."][i]} {c.name}</span>
+            <span style={{fontSize:12}}>{["🥇","🥈","🥉","4.","5."][i]} {c.name}</span>
             <b style={{fontSize:11,color:C.accentL}}>{rFmt(c[rankKey])}</b>
           </div>
           <div style={{height:3,background:C.border,borderRadius:2}}>
@@ -659,11 +672,11 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
       </div>
     </div>
 
-    {/* Posicion por moneda */}
+    {/* Posición por moneda */}
     <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16}}>
-      <h4 style={{margin:"0 0 10px",fontSize:13,fontWeight:600}}>Posicion por Moneda</h4>
+      <h4 style={{margin:"0 0 10px",fontSize:13,fontWeight:600}}>Posición por Moneda</h4>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {inventory.filter(i=>+i.quantity>0).length===0&&<p style={{color:C.muted,fontSize:12}}>Sin posiciones - registra tu primera compra</p>}
+        {inventory.filter(i=>+i.quantity>0).length===0&&<p style={{color:C.muted,fontSize:12}}>Sin posiciones · registra tu primera compra</p>}
         {inventory.filter(i=>+i.quantity>0).map(i=><div key={i.symbol} style={{background:C.card2,border:`1px solid ${COIN_C[i.symbol]||C.border}40`,borderRadius:8,padding:"10px 14px",minWidth:140}}>
           <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}>
             <span style={{width:7,height:7,borderRadius:"50%",background:COIN_C[i.symbol]||C.accent}}/>
@@ -678,7 +691,7 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
   </div>;
 }
 
-//  COMPRAS 
+// ─── COMPRAS ──────────────────────────────────────────────────────────────
 function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
@@ -688,7 +701,7 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
   const filtered=purchases.filter(p=>inP(p.date,period,from,to));
   const curInv=inventory.find(i=>i.symbol===form.symbol);
   const openEdit=r=>{setEditRow(r);setForm({date:r.date,symbol:r.symbol,quantity:String(r.quantity),unit_cost:String(r.unit_cost),supplier:r.supplier||"",pay_method:r.pay_method||"transferencia",notes:r.notes||"",payType:"contado",initial_paid:"",due_date:r.due_date||"",paid:String(r.paid||0),status:r.status||"pagado"});setModal(true);};
-  const del=async r=>{if(!confirm(`Anular compra de ${fmtQ(r.quantity,r.symbol)} ${r.symbol}?`))return;try{await api.deletePurchase(r.id);await reload();toast("Compra anulada");}catch(e){toast(e.message,"error");};};
+  const del=async r=>{if(!confirm(`¿Anular compra de ${fmtQ(r.quantity,r.symbol)} ${r.symbol}?`))return;try{await api.deletePurchase(r.id);await reload();toast("Compra anulada");}catch(e){toast(e.message,"error");};};
   const save=async()=>{
     if(!form.quantity||!form.unit_cost){toast("Completa campos","error");return;}
     setSaving(true);
@@ -704,20 +717,20 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
     {key:"unit_cost",label:"Precio",render:v=>fmt(v)},{key:"total",label:"Total",render:v=><b>{fmt(v)}</b>},
     {key:"paid",label:"Pagado",render:v=><span style={{color:C.green}}>{fmt(v||0)}</span>},
     {key:"st",label:"Estado",render:(_,r)=><Badge label={stOf(r)} color={ST_C[stOf(r)]}/>},
-    {key:"supplier",label:"Proveedor"},{key:"pay_method",label:"Metodo"},
-    {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:10}}></a>:""},
-    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button></div>},
+    {key:"supplier",label:"Proveedor"},{key:"pay_method",label:"Método"},
+    {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:10}}>📎</a>:""},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Compras" sub={`${purchases.length} operaciones`} action="Nueva Compra" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}
-      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","Precio","Total","Pagado","Pendiente","Estado","Vence","Proveedor","Metodo"],filtered.map(p=>[p.date,p.symbol,p.quantity,p.unit_cost,p.total,p.paid||0,pendOf(p),stOf(p),p.due_date||"",p.supplier||"",p.pay_method||""]),`compras-${today()}.csv`)}> Excel</Btn>}/>
+      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","Precio","Total","Pagado","Pendiente","Estado","Vence","Proveedor","Método"],filtered.map(p=>[p.date,p.symbol,p.quantity,p.unit_cost,p.total,p.paid||0,pendOf(p),stOf(p),p.due_date||"",p.supplier||"",p.pay_method||""]),`compras-${today()}.csv`)}>📥 Excel</Btn>}/>
     <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
       <Stat small label="Invertido" value={fmtK(filtered.reduce((a,p)=>a+p.total,0))} accent={C.amber}/>
       <Stat small label="Operaciones" value={filtered.length}/>
       <Stat small label="Por Pagar" value={fmtK(filtered.reduce((a,p)=>a+pendOf(p),0))} accent={C.rose}/>
     </div>
-    <Tabla cols={cols} rows={filtered} emptyMsg="Sin compras en este periodo"/>
+    <Tabla cols={cols} rows={filtered} emptyMsg="Sin compras en este período"/>
     {modal&&<Modal title={editRow?"Editar Compra":"Nueva Compra"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);setFile(null);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -737,8 +750,8 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
           {[...suppliers.map(s=>s.name),...clients.map(c=>c.name)].filter((v,i,a)=>a.indexOf(v)===i).sort().map((name,i)=><option key={i} value={name}/>)}
         </datalist>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <Sel label="Forma pago" value={form.payType} onChange={f("payType")} options={[{value:"contado",label:" Contado"},{value:"credito",label:" Credito"}]}/>
-          <Sel label="Metodo" value={form.pay_method} onChange={f("pay_method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+          <Sel label="Forma pago" value={form.payType} onChange={f("payType")} options={[{value:"contado",label:"💵 Contado"},{value:"credito",label:"📅 Crédito"}]}/>
+          <Sel label="Método" value={form.pay_method} onChange={f("pay_method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
         </div>
         {form.payType==="credito"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,background:"#1f1a0a",border:`1px solid ${C.amber}`,borderRadius:7,padding:10}}>
           <Inp label="Abono inicial" type="number" value={form.initial_paid} onChange={f("initial_paid")} placeholder="0"/>
@@ -746,12 +759,12 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
         </div>}
         <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
         {!editRow&&<div style={{display:"flex",flexDirection:"column",gap:3}}>
-          <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}> Comprobante</label>
+          <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>📎 Comprobante</label>
           <input type="file" accept="image/*,.pdf" onChange={e=>setFile(e.target.files&&e.target.files[0]||null)}/>
         </div>}
         {editRow&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Inp label="Valor pagado" type="number" value={form.paid||""} onChange={f("paid")}/>
-          <Sel label="Estado" value={form.status||"pagado"} onChange={f("status")} options={[{value:"pagado",label:" Pagado"},{value:"parcial",label:" Parcial"},{value:"pendiente",label:" Pendiente"},{value:"vencido",label:" Vencido"}]}/>
+          <Sel label="Estado" value={form.status||"pagado"} onChange={f("status")} options={[{value:"pagado",label:"✅ Pagado"},{value:"parcial",label:"⚠️ Parcial"},{value:"pendiente",label:"⏳ Pendiente"},{value:"vencido",label:"🔴 Vencido"}]}/>
         </div>}
         <Btn onClick={save} disabled={saving} full>{saving?"Procesando...":editRow?"Actualizar Compra":"Registrar Compra"}</Btn>
       </div>
@@ -759,7 +772,7 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
   </div>;
 }
 
-//  VENTAS 
+// ─── VENTAS ───────────────────────────────────────────────────────────────
 function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
@@ -768,7 +781,7 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
   const[form,setForm]=useState(empty);const[file,setFile]=useState(null);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const[editRow,setEditRow]=useState(null);
   const openEdit=r=>{setEditRow(r);setForm({date:r.date,symbol:r.symbol,quantity:String(r.quantity),unit_price:String(r.unit_price),client:r.client||"",pay_method:r.pay_method||"transferencia",notes:r.notes||"",payType:"contado",initial_paid:"",due_date:r.due_date||"",paid:String(r.paid||0),status:r.status||"pagado"});setModal(true);};
-  const del=async r=>{if(!confirm(`Anular venta de ${fmtQ(r.quantity,r.symbol)} ${r.symbol}?`))return;try{await api.deleteSale(r.id);await reload();toast("Venta anulada");}catch(e){toast(e.message,"error");}};
+  const del=async r=>{if(!confirm(`¿Anular venta de ${fmtQ(r.quantity,r.symbol)} ${r.symbol}?`))return;try{await api.deleteSale(r.id);await reload();toast("Venta anulada");}catch(e){toast(e.message,"error");}};
   const curInv=inventory.find(i=>i.symbol===form.symbol);
   const estP=curInv&&form.quantity&&form.unit_price?(+form.quantity*+form.unit_price)-(+form.quantity*+curInv.avg_cost):null;
   const filtered=sales.filter(s=>inP(s.date,period,from,to)&&(sym==="all"||s.symbol===sym));
@@ -781,7 +794,7 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
     }
     if(!form.quantity||!form.unit_price){toast("Completa campos","error");return;}
     if(!curInv||+curInv.quantity<+form.quantity){toast(`Insuficiente: ${fmtQ(curInv?.quantity||0,form.symbol)} ${form.symbol}`,"error");return;}
-    setSaving(true);try{const r=await api.addSale(form,file);await reload();setModal(false);setForm(empty);setFile(null);toast(`Venta - Utilidad: ${fmt(r.gross_profit||0)}`);}
+    setSaving(true);try{const r=await api.addSale(form,file);await reload();setModal(false);setForm(empty);setFile(null);toast(`Venta · Utilidad: ${fmt(r.gross_profit||0)}`);}
     catch(e){toast(e.message,"error");}finally{setSaving(false);}
   };
   const cols=[
@@ -792,12 +805,12 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
     {key:"paid",label:"Pagado",render:v=><span style={{color:C.green}}>{fmt(v||0)}</span>},
     {key:"st",label:"Estado",render:(_,r)=><Badge label={stOf(r)} color={ST_C[stOf(r)]}/>},
     {key:"client",label:"Cliente"},
-    {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:10}}></a>:""},
-    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button></div>},
+    {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:10}}>📎</a>:""},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Ventas" sub={`${sales.length} operaciones`} action="Nueva Venta" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}
-      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","P.Venta","CPP","Ingreso","Costo","Utilidad","Pagado","Pendiente","Estado","Vence","Cliente","Metodo"],filtered.map(s=>[s.date,s.symbol,s.quantity,s.unit_price,s.avg_cost_used,s.total,s.cogs,s.gross_profit,s.paid||0,pendOf(s),stOf(s),s.due_date||"",s.client||"",s.pay_method||""]),`ventas-${today()}.csv`)}> Excel</Btn>}/>
+      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","P.Venta","CPP","Ingreso","Costo","Utilidad","Pagado","Pendiente","Estado","Vence","Cliente","Método"],filtered.map(s=>[s.date,s.symbol,s.quantity,s.unit_price,s.avg_cost_used,s.total,s.cogs,s.gross_profit,s.paid||0,pendOf(s),stOf(s),s.due_date||"",s.client||"",s.pay_method||""]),`ventas-${today()}.csv`)}>📥 Excel</Btn>}/>
     <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
       {["all",...new Set(sales.map(s=>s.symbol))].map(s=><Pill key={s} label={s==="all"?"Todas":s} active={sym===s} onClick={()=>setSym(s)}/>)}
@@ -808,12 +821,12 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
       <Stat small label="Margen" value={`${rev>0?((gp/rev)*100).toFixed(2):0}%`} accent={C.accentL}/>
       <Stat small label="Por Cobrar" value={fmtK(filtered.reduce((a,s)=>a+pendOf(s),0))} accent={C.amber}/>
     </div>
-    <Tabla cols={cols} rows={filtered} emptyMsg="Sin ventas en este periodo"/>
+    <Tabla cols={cols} rows={filtered} emptyMsg="Sin ventas en este período"/>
     {modal&&<Modal title={editRow?"Editar Venta":"Nueva Venta"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);setFile(null);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
-          <Sel label="Moneda" value={form.symbol} onChange={f("symbol")} options={inventory.filter(i=>+i.quantity>0).length>0?inventory.filter(i=>+i.quantity>0).map(i=>({value:i.symbol,label:`${i.symbol} - ${fmtQ(i.quantity,i.symbol)}`})):[{value:"USDT",label:"USDT (sin stock)"}]}/>
+          <Sel label="Moneda" value={form.symbol} onChange={f("symbol")} options={inventory.filter(i=>+i.quantity>0).length>0?inventory.filter(i=>+i.quantity>0).map(i=>({value:i.symbol,label:`${i.symbol} · ${fmtQ(i.quantity,i.symbol)}`})):[{value:"USDT",label:"USDT (sin stock)"}]}/>
         </div>
         {curInv&&<div style={{background:C.panel,borderRadius:7,padding:8,display:"flex",gap:12,flexWrap:"wrap",fontSize:11}}>
           <span style={{color:C.muted}}>Disponible: <b style={{color:COIN_C[form.symbol]}}>{fmtQ(curInv.quantity,form.symbol)}</b></span>
@@ -833,8 +846,8 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
           {[...clients.map(c=>c.name),...suppliers.map(s=>s.name)].filter((v,i,a)=>a.indexOf(v)===i).sort().map((name,i)=><option key={i} value={name}/>)}
         </datalist>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <Sel label="Forma pago" value={form.payType} onChange={f("payType")} options={[{value:"contado",label:" Contado"},{value:"credito",label:" Credito"}]}/>
-          <Sel label="Metodo" value={form.pay_method} onChange={f("pay_method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+          <Sel label="Forma pago" value={form.payType} onChange={f("payType")} options={[{value:"contado",label:"💵 Contado"},{value:"credito",label:"📅 Crédito"}]}/>
+          <Sel label="Método" value={form.pay_method} onChange={f("pay_method")} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
         </div>
         {form.payType==="credito"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,background:"#1f1a0a",border:`1px solid ${C.amber}`,borderRadius:7,padding:10}}>
           <Inp label="Abono inicial" type="number" value={form.initial_paid} onChange={f("initial_paid")} placeholder="0"/>
@@ -842,12 +855,12 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
         </div>}
         <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
         {!editRow&&<div style={{display:"flex",flexDirection:"column",gap:3}}>
-          <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}> Comprobante</label>
+          <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>📎 Comprobante</label>
           <input type="file" accept="image/*,.pdf" onChange={e=>setFile(e.target.files&&e.target.files[0]||null)}/>
         </div>}
         {editRow&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Inp label="Valor pagado" type="number" value={form.paid||""} onChange={f("paid")}/>
-          <Sel label="Estado" value={form.status||"pagado"} onChange={f("status")} options={[{value:"pagado",label:" Pagado"},{value:"parcial",label:" Parcial"},{value:"pendiente",label:" Pendiente"},{value:"vencido",label:" Vencido"}]}/>
+          <Sel label="Estado" value={form.status||"pagado"} onChange={f("status")} options={[{value:"pagado",label:"✅ Pagado"},{value:"parcial",label:"⚠️ Parcial"},{value:"pendiente",label:"⏳ Pendiente"},{value:"vencido",label:"🔴 Vencido"}]}/>
         </div>}
         <Btn onClick={save} disabled={saving} full>{saving?"Procesando...":editRow?"Actualizar Venta":"Registrar Venta"}</Btn>
       </div>
@@ -855,7 +868,7 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
   </div>;
 }
 
-//  CARTERA 
+// ─── CARTERA ──────────────────────────────────────────────────────────────
 function CarteraModule({sales,purchases,payments,reload,toast}){
   const[tab,setTab]=useState("cobrar");const[payCtx,setPayCtx]=useState(null);
   const cobrar=sales.filter(s=>pendOf(s)>0.01).sort((a,b)=>(a.due_date||"9999").localeCompare(b.due_date||"9999"));
@@ -863,46 +876,46 @@ function CarteraModule({sales,purchases,payments,reload,toast}){
   const tCobrar=cobrar.reduce((a,s)=>a+pendOf(s),0),tPagar=pagar.reduce((a,p)=>a+pendOf(p),0);
   const tVenc=cobrar.filter(s=>stOf(s)==="vencido").reduce((a,s)=>a+pendOf(s),0);
   const mkCols=isC=>[
-    {key:"date",label:"Fecha"},{key:isC?"client":"supplier",label:isC?"Cliente":"Proveedor",render:v=><b>{v||"-"}</b>},
+    {key:"date",label:"Fecha"},{key:isC?"client":"supplier",label:isC?"Cliente":"Proveedor",render:v=><b>{v||"—"}</b>},
     {key:"symbol",label:"Op.",render:(v,r)=><span style={{fontSize:10,color:C.muted}}>{fmtQ(r.quantity,v)} {v}</span>},
     {key:"total",label:"Total",render:v=>fmt(v)},{key:"paid",label:"Pagado",render:v=><span style={{color:C.green}}>{fmt(v||0)}</span>},
     {key:"pend",label:"Pendiente",render:(_,r)=><b style={{color:C.amber}}>{fmt(pendOf(r))}</b>},
-    {key:"due_date",label:"Vence"},{key:"mora",label:"Mora",render:(_,r)=>moraOf(r)>0?<b style={{color:C.rose}}>{moraOf(r)}d</b>:"-"},
+    {key:"due_date",label:"Vence"},{key:"mora",label:"Mora",render:(_,r)=>moraOf(r)>0?<b style={{color:C.rose}}>{moraOf(r)}d</b>:"—"},
     {key:"st",label:"Estado",render:(_,r)=><Badge label={stOf(r)} color={ST_C[stOf(r)]}/>},
-    {key:"act",label:"",render:(_,r)=><Btn small onClick={()=>setPayCtx({title:isC?"Recibir Abono":"Pagar",party:isC?r.client:r.supplier,direction:isC?"recibido":"realizado",reference_type:isC?"sale":"purchase",reference_id:r.id,maxAmount:pendOf(r)})}></Btn>},
+    {key:"act",label:"",render:(_,r)=><Btn small onClick={()=>setPayCtx({title:isC?"Recibir Abono":"Pagar",party:isC?r.client:r.supplier,direction:isC?"recibido":"realizado",reference_type:isC?"sale":"purchase",reference_id:r.id,maxAmount:pendOf(r)})}>💰</Btn>},
   ];
   const payCols=[
     {key:"date",label:"Fecha"},{key:"party",label:"Persona",render:v=><b>{v}</b>},
     {key:"direction",label:"Tipo",render:v=><span style={{color:v==="recibido"?C.green:C.rose,fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{v}</span>},
     {key:"amount",label:"Valor",render:(v,r)=><b style={{color:r.direction==="recibido"?C.green:C.rose}}>{r.direction==="recibido"?"+":"-"}{fmt(v)}</b>},
-    {key:"method",label:"Metodo"},{key:"notes",label:"Notas"},
-    {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:11}}></a>:""},
-    {key:"pacc",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();if(!confirm("Eliminar este pago?"))return;try{await api.deletePayment(r.id);await reload();toast("Pago eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button>},
+    {key:"method",label:"Método"},{key:"notes",label:"Notas"},
+    {key:"receipt_url",label:"",render:v=>v?<a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:11}}>📎</a>:""},
+    {key:"pacc",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();if(!confirm("¿Eliminar este pago?"))return;try{await api.deletePayment(r.id);await reload();toast("Pago eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Cartera y Creditos"/>
+    <Head title="Cartera y Créditos"/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
       <Stat small label="Por Cobrar" value={fmtK(tCobrar)} accent={C.amber} sub={`${cobrar.length} cuentas`}/>
       <Stat small label="Vencido" value={fmtK(tVenc)} accent={tVenc>0?C.rose:C.muted} sub={`${cobrar.filter(s=>stOf(s)==="vencido").length} cuentas`}/>
       <Stat small label="Por Pagar" value={fmtK(tPagar)} accent={C.rose} sub={`${pagar.length} cuentas`}/>
-      <Stat small label="Posicion Neta" value={fmtK(tCobrar-tPagar)} accent={tCobrar-tPagar>=0?C.green:C.rose}/>
+      <Stat small label="Posición Neta" value={fmtK(tCobrar-tPagar)} accent={tCobrar-tPagar>=0?C.green:C.rose}/>
     </div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-      <Pill label={` Por Cobrar (${cobrar.length})`} active={tab==="cobrar"} onClick={()=>setTab("cobrar")}/>
-      <Pill label={` Por Pagar (${pagar.length})`} active={tab==="pagar"} onClick={()=>setTab("pagar")}/>
-      <Pill label={` Pagos (${payments.length})`} active={tab==="pagos"} onClick={()=>setTab("pagos")}/>
+      <Pill label={`📥 Por Cobrar (${cobrar.length})`} active={tab==="cobrar"} onClick={()=>setTab("cobrar")}/>
+      <Pill label={`📤 Por Pagar (${pagar.length})`} active={tab==="pagar"} onClick={()=>setTab("pagar")}/>
+      <Pill label={`🧾 Pagos (${payments.length})`} active={tab==="pagos"} onClick={()=>setTab("pagos")}/>
     </div>
     {tab!=="pagos"&&<div style={{display:"flex",justifyContent:"flex-end"}}>
-      <Btn small variant="sec" onClick={()=>{const rows=tab==="cobrar"?cobrar:pagar;exportCSV(["Fecha","Persona","Moneda","Cantidad","Total","Pagado","Pendiente","Vence","Mora","Estado"],rows.map(r=>[r.date,tab==="cobrar"?r.client:r.supplier,r.symbol,r.quantity,r.total,r.paid||0,pendOf(r),r.due_date||"",moraOf(r),stOf(r)]),`cartera-${tab}-${today()}.csv`);}}> Excel</Btn>
+      <Btn small variant="sec" onClick={()=>{const rows=tab==="cobrar"?cobrar:pagar;exportCSV(["Fecha","Persona","Moneda","Cantidad","Total","Pagado","Pendiente","Vence","Mora","Estado"],rows.map(r=>[r.date,tab==="cobrar"?r.client:r.supplier,r.symbol,r.quantity,r.total,r.paid||0,pendOf(r),r.due_date||"",moraOf(r),stOf(r)]),`cartera-${tab}-${today()}.csv`);}}>📥 Excel</Btn>
     </div>}
-    {tab==="cobrar"&&<Tabla cols={mkCols(true)} rows={cobrar} emptyMsg=" Sin cuentas por cobrar"/>}
-    {tab==="pagar"&&<Tabla cols={mkCols(false)} rows={pagar} emptyMsg=" Sin cuentas por pagar"/>}
+    {tab==="cobrar"&&<Tabla cols={mkCols(true)} rows={cobrar} emptyMsg="🎉 Sin cuentas por cobrar"/>}
+    {tab==="pagar"&&<Tabla cols={mkCols(false)} rows={pagar} emptyMsg="🎉 Sin cuentas por pagar"/>}
     {tab==="pagos"&&<Tabla cols={payCols} rows={payments} emptyMsg="Sin pagos"/>}
     {payCtx&&<PaymentModal ctx={payCtx} onClose={()=>setPayCtx(null)} reload={reload} toast={toast}/>}
   </div>;
 }
 
-//  INVENTARIO 
+// ─── INVENTARIO ───────────────────────────────────────────────────────────
 function InventoryModule({inventory,kardex}){
   const[tab,setTab]=useState("pos");const[sym,setSym]=useState("all");
   const totInv=inventory.reduce((a,i)=>a+(+i.total_invested||0),0);
@@ -926,22 +939,22 @@ function InventoryModule({inventory,kardex}){
     {key:"balance_avg",label:"CPP Saldo",render:v=>fmt(v)},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Inventario" extra={<Btn small variant="sec" onClick={()=>tab==="pos"?exportCSV(["Moneda","Cantidad","CPP","Invertido","Utilidad","ROI%"],inventory.map(i=>[i.symbol,i.quantity,i.avg_cost,i.total_invested,i.accumulated_profit,i.roi_pct]),`inventario-${today()}.csv`):exportCSV(["Fecha","Moneda","Tipo","Cantidad","Precio","Total","Saldo","CPP"],fk.map(k=>[k.date,k.symbol,k.type,k.quantity,k.unit_cost,k.total,k.balance_qty,k.balance_avg]),`kardex-${today()}.csv`)}> Excel</Btn>}/>
+    <Head title="Inventario" extra={<Btn small variant="sec" onClick={()=>tab==="pos"?exportCSV(["Moneda","Cantidad","CPP","Invertido","Utilidad","ROI%"],inventory.map(i=>[i.symbol,i.quantity,i.avg_cost,i.total_invested,i.accumulated_profit,i.roi_pct]),`inventario-${today()}.csv`):exportCSV(["Fecha","Moneda","Tipo","Cantidad","Precio","Total","Saldo","CPP"],fk.map(k=>[k.date,k.symbol,k.type,k.quantity,k.unit_cost,k.total,k.balance_qty,k.balance_avg]),`kardex-${today()}.csv`)}>📥 Excel</Btn>}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
-      <Stat small label="Capital en posicion" value={fmtK(totInv)} accent={C.amber}/>
+      <Stat small label="Capital en posición" value={fmtK(totInv)} accent={C.amber}/>
       <Stat small label="Utilidad acumulada" value={fmtK(totP)} accent={C.green}/>
       <Stat small label="ROI" value={`${totInv>0?((totP/totInv)*100).toFixed(1):0}%`} accent={C.accentL}/>
       <Stat small label="Monedas activas" value={inventory.filter(i=>+i.quantity>0).length}/>
     </div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"space-between"}}>
-      <div style={{display:"flex",gap:5}}><Pill label=" Posicion" active={tab==="pos"} onClick={()=>setTab("pos")}/><Pill label=" Kardex" active={tab==="kdx"} onClick={()=>setTab("kdx")}/></div>
+      <div style={{display:"flex",gap:5}}><Pill label="📦 Posición" active={tab==="pos"} onClick={()=>setTab("pos")}/><Pill label="📋 Kardex" active={tab==="kdx"} onClick={()=>setTab("kdx")}/></div>
     </div>
     {tab==="kdx"&&<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{["all",...new Set(kardex.map(k=>k.symbol))].map(s=><Pill key={s} label={s==="all"?"Todas":s} active={sym===s} onClick={()=>setSym(s)}/>)}</div>}
     {tab==="pos"?<Tabla cols={pCols} rows={inventory} emptyMsg="Sin posiciones"/>:<Tabla cols={kCols} rows={fk} emptyMsg="Sin movimientos"/>}
   </div>;
 }
 
-//  TESORERIA 
+// ─── TESORERÍA ────────────────────────────────────────────────────────────
 function TreasuryModule({reload,toast}){
   const[accounts,setAccounts]=useState([]);const[moves,setMoves]=useState([]);
   const[modal,setModal]=useState(false);const[movModal,setMovModal]=useState(false);
@@ -967,7 +980,7 @@ function TreasuryModule({reload,toast}){
     catch(e){toast(e.message,"error");}finally{setSaving(false);}
   };
   const saveMov=async()=>{
-    if(!movForm.amount||+movForm.amount<=0){toast("Valor invalido","error");return;}
+    if(!movForm.amount||+movForm.amount<=0){toast("Valor inválido","error");return;}
     setSaving(true);
     try{
       await api.addTreasuryMove({...movForm,amount:+movForm.amount,from_id:movForm.from_id||null,to_id:movForm.to_id||null});
@@ -985,14 +998,14 @@ function TreasuryModule({reload,toast}){
 
   const movCols=[
     {key:"date",label:"Fecha"},{key:"type",label:"Tipo",render:v=><span style={{color:v==="ingreso"?C.green:v==="egreso"?C.rose:C.blue,fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{v}</span>},
-    {key:"description",label:"Descripcion"},{key:"method",label:"Metodo"},
+    {key:"description",label:"Descripción"},{key:"method",label:"Método"},
     {key:"amount",label:"Valor",render:v=><b>{fmt(v)}</b>},
-    {key:"from",label:"De",render:v=>v?.name||"-"},{key:"to",label:"A",render:v=>v?.name||"-"},
+    {key:"from",label:"De",render:v=>v?.name||"—"},{key:"to",label:"A",render:v=>v?.name||"—"},
   ];
 
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Tesoreria" sub="bolsillos de caja y movimientos"
-      extra={<React.Fragment><Btn small variant="sec" onClick={()=>setMovModal(true)} icon="<->">Movimiento</Btn></React.Fragment>}
+    <Head title="Tesorería" sub="bolsillos de caja y movimientos"
+      extra={<React.Fragment><Btn small variant="sec" onClick={()=>setMovModal(true)} icon="↔️">Movimiento</Btn></React.Fragment>}
       action="Nueva Cuenta" onAction={()=>setModal(true)}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
       <Stat small label="Total COP" value={fmtK(totalCOP)} accent={C.accentL}/>
@@ -1002,7 +1015,7 @@ function TreasuryModule({reload,toast}){
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         {accounts.map(a=><div key={a.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 16px",minWidth:160}}>
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-            <span style={{fontSize:18}}>{TREAS_ICONS[a.type]||""}</span>
+            <span style={{fontSize:18}}>{TREAS_ICONS[a.type]||"💳"}</span>
             <div><div style={{fontWeight:600,fontSize:13}}>{a.name}</div><div style={{fontSize:9,color:C.muted,textTransform:"uppercase"}}>{a.type}</div></div>
           </div>
           <div style={{fontSize:20,fontWeight:700,color:a.balance>=0?C.accentL:C.rose,fontFamily:"monospace"}}>{fmt(a.balance)}</div>
@@ -1028,19 +1041,19 @@ function TreasuryModule({reload,toast}){
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Inp label="Fecha" type="date" value={movForm.date} onChange={fm("date")}/>
-          <Sel label="Tipo" value={movForm.type} onChange={fm("type")} options={[{value:"ingreso",label:" Ingreso"},{value:"egreso",label:" Egreso"},{value:"transferencia",label:"<-> Transferencia"}]}/>
+          <Sel label="Tipo" value={movForm.type} onChange={fm("type")} options={[{value:"ingreso",label:"💰 Ingreso"},{value:"egreso",label:"💸 Egreso"},{value:"transferencia",label:"↔️ Transferencia"}]}/>
         </div>
-        {(movForm.type==="egreso"||movForm.type==="transferencia")&&<Sel label="Cuenta origen" value={movForm.from_id} onChange={fm("from_id")} options={[{value:"",label:"Seleccionar..."},...accounts.map(a=>({value:a.id,label:`${TREAS_ICONS[a.type]} ${a.name} - ${fmt(a.balance)}`}))]}/>}
-        {(movForm.type==="ingreso"||movForm.type==="transferencia")&&<Sel label="Cuenta destino" value={movForm.to_id} onChange={fm("to_id")} options={[{value:"",label:"Seleccionar..."},...accounts.map(a=>({value:a.id,label:`${TREAS_ICONS[a.type]} ${a.name} - ${fmt(a.balance)}`}))]}/>}
+        {(movForm.type==="egreso"||movForm.type==="transferencia")&&<Sel label="Cuenta origen" value={movForm.from_id} onChange={fm("from_id")} options={[{value:"",label:"Seleccionar..."},...accounts.map(a=>({value:a.id,label:`${TREAS_ICONS[a.type]} ${a.name} · ${fmt(a.balance)}`}))]}/>}
+        {(movForm.type==="ingreso"||movForm.type==="transferencia")&&<Sel label="Cuenta destino" value={movForm.to_id} onChange={fm("to_id")} options={[{value:"",label:"Seleccionar..."},...accounts.map(a=>({value:a.id,label:`${TREAS_ICONS[a.type]} ${a.name} · ${fmt(a.balance)}`}))]}/>}
         <Inp label="Valor" type="number" value={movForm.amount} onChange={fm("amount")}/>
-        <Inp label="Descripcion" value={movForm.description} onChange={fm("description")}/>
+        <Inp label="Descripción" value={movForm.description} onChange={fm("description")}/>
         <Btn onClick={saveMov} disabled={saving} full>{saving?"Guardando...":"Registrar"}</Btn>
       </div>
     </Modal>}
   </div>;
 }
 
-//  CLIENTES 
+// ─── CLIENTES ─────────────────────────────────────────────────────────────
 function ClientFormModal({client,onClose,reload,toast}){
   const[form,setForm]=useState(client?{name:client.name||"",document:client.document||"",phone:client.phone||"",email:client.email||"",city:client.city||"",address:client.address||"",notes:client.notes||"",status:client.status||"activo",tags:client.tags||[]}:{name:"",document:"",phone:"",email:"",city:"",address:"",notes:"",status:"activo",tags:[]});
   const f=k=>v=>setForm(p=>({...p,[k]:v}));
@@ -1057,14 +1070,14 @@ function ClientFormModal({client,onClose,reload,toast}){
         <Inp label="Documento" value={form.document} onChange={f("document")} placeholder="CC/NIT"/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-        <Inp label="Telefono" value={form.phone} onChange={f("phone")}/>
+        <Inp label="Teléfono" value={form.phone} onChange={f("phone")}/>
         <Inp label="Correo" value={form.email} onChange={f("email")}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Inp label="Ciudad" value={form.city} onChange={f("city")}/>
-        <Sel label="Estado" value={form.status} onChange={f("status")} options={[{value:"activo",label:" Activo"},{value:"inactivo",label:" Inactivo"}]}/>
+        <Sel label="Estado" value={form.status} onChange={f("status")} options={[{value:"activo",label:"🟢 Activo"},{value:"inactivo",label:"⚪ Inactivo"}]}/>
       </div>
-      <Inp label="Direccion" value={form.address} onChange={f("address")}/>
+      <Inp label="Dirección" value={form.address} onChange={f("address")}/>
       <div style={{display:"flex",flexDirection:"column",gap:4}}>
         <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>Etiquetas</label>
         <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{TAGS.map(t=><Pill key={t} label={t} active={form.tags.includes(t)} onClick={()=>toggleTag(t)} color={TAG_C[t]}/>)}</div>
@@ -1093,70 +1106,70 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
   // Utilidad por mes para la ficha de rentabilidad
   const profByMo=mos.map(m=>st.vs.filter(s=>s.date.slice(0,7)===m).reduce((a,s)=>a+(+s.gross_profit||0),0));
 
-  const exportExtracto=()=>exportCSV(["Fecha","Documento","Concepto","Debito","Credito","Saldo"],ledger.map(r=>[r.date,r.doc||"",r.concept,r.debit||"",r.credit||"",r.saldo]),`extracto-${client.name.replace(/\s+/g,"-")}-${today()}.csv`);
+  const exportExtracto=()=>exportCSV(["Fecha","Documento","Concepto","Débito","Crédito","Saldo"],ledger.map(r=>[r.date,r.doc||"",r.concept,r.debit||"",r.credit||"",r.saldo]),`extracto-${client.name.replace(/\s+/g,"-")}-${today()}.csv`);
 
   const ledCols=[
-    {key:"date",label:"Fecha"},{key:"doc",label:"Documento",render:v=><span style={{fontFamily:"monospace",fontSize:10,color:C.muted}}>{v||"-"}</span>},
-    {key:"concept",label:"Concepto",render:(v,r)=><span>{v}{r.receipt&&<a href={r.receipt} target="_blank" rel="noopener" style={{color:C.blue,marginLeft:6,fontSize:10}}></a>}</span>},
-    {key:"debit",label:"Debito",render:v=>v?<span style={{color:C.amber}}>{fmt(v)}</span>:"-"},
-    {key:"credit",label:"Credito",render:v=>v?<span style={{color:C.green}}>{fmt(v)}</span>:"-"},
+    {key:"date",label:"Fecha"},{key:"doc",label:"Documento",render:v=><span style={{fontFamily:"monospace",fontSize:10,color:C.muted}}>{v||"—"}</span>},
+    {key:"concept",label:"Concepto",render:(v,r)=><span>{v}{r.receipt&&<a href={r.receipt} target="_blank" rel="noopener" style={{color:C.blue,marginLeft:6,fontSize:10}}>📎</a>}</span>},
+    {key:"debit",label:"Débito",render:v=>v?<span style={{color:C.amber}}>{fmt(v)}</span>:"—"},
+    {key:"credit",label:"Crédito",render:v=>v?<span style={{color:C.green}}>{fmt(v)}</span>:"—"},
     {key:"saldo",label:"Saldo",render:v=><b style={{color:Math.abs(v)<0.01?C.muted:v>0?C.amber:C.blue,fontFamily:"monospace"}}>{fmt(v)}</b>},
   ];
   const opCols=[
-    {key:"date",label:"Fecha"},{key:"_t",label:"Tipo",render:v=><span style={{color:v==="venta"?C.rose:C.green,fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{v==="venta"?"^":"v"} {v}</span>},
+    {key:"date",label:"Fecha"},{key:"_t",label:"Tipo",render:v=><span style={{color:v==="venta"?C.rose:C.green,fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{v==="venta"?"↑":"↓"} {v}</span>},
     {key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
     {key:"quantity",label:"Cantidad",render:(v,r)=>fmtQ(v,r.symbol)},
     {key:"total",label:"Total",render:v=><b>{fmt(v)}</b>},
-    {key:"gross_profit",label:"Utilidad",render:(v,r)=>r._t==="venta"?<b style={{color:(v||0)>=0?C.green:C.rose}}>{fmt(v||0)}</b>:<span style={{color:C.muted}}>-</span>},
+    {key:"gross_profit",label:"Utilidad",render:(v,r)=>r._t==="venta"?<b style={{color:(v||0)>=0?C.green:C.rose}}>{fmt(v||0)}</b>:<span style={{color:C.muted}}>—</span>},
     {key:"st",label:"Estado",render:(_,r)=><Badge label={stOf(r)} color={ST_C[stOf(r)]}/>},
   ];
 
   return <React.Fragment>
-    <Modal title={` ${client.name}${st.vs.length>0&&st.cs.length>0?' - Cliente & Proveedor':st.cs.length>0?' - Proveedor':' - Cliente'}`} onClose={onClose} ultra>
+    <Modal title={`👤 ${client.name}${st.vs.length>0&&st.cs.length>0?' · Cliente & Proveedor':st.cs.length>0?' · Proveedor':' · Cliente'}`} onClose={onClose} ultra>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {/* Header ficha */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
           <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,color:C.muted}}>
-            {client.document&&<span> {client.document}</span>}
-            {client.phone&&<span> {client.phone}</span>}
-            {client.email&&<span> {client.email}</span>}
-            {client.city&&<span> {client.city}</span>}
-            <span> Desde: <b style={{color:C.text}}>{st.since||"-"}</b></span>
-            {st.daysSince!==null&&<span> Ultimo: <b style={{color:st.daysSince>30?C.amber:C.green}}>{st.daysSince===0?"hoy":`${st.daysSince}d`}</b></span>}
+            {client.document&&<span>🪪 {client.document}</span>}
+            {client.phone&&<span>📞 {client.phone}</span>}
+            {client.email&&<span>✉️ {client.email}</span>}
+            {client.city&&<span>📍 {client.city}</span>}
+            <span>🗓 Desde: <b style={{color:C.text}}>{st.since||"—"}</b></span>
+            {st.daysSince!==null&&<span>⏱ Último: <b style={{color:st.daysSince>30?C.amber:C.green}}>{st.daysSince===0?"hoy":`${st.daysSince}d`}</b></span>}
             <Badge label={(client.status||"activo")==="activo"?"Activo":"Inactivo"} color={(client.status||"activo")==="activo"?C.green:C.slate}/>
             {(client.tags||[]).map(t=><Badge key={t} label={t} color={TAG_C[t]||C.slate}/>)}
           </div>
           <div style={{display:"flex",gap:6}}>
-            {client.phone&&<Btn small variant="sec" onClick={()=>window.open(`https://wa.me/57${(client.phone||"").replace(/[-\s]/g,"")}`,"_blank")}> WA</Btn>}
-            <Btn small variant="sec" onClick={onEdit}> Editar</Btn>
+            {client.phone&&<Btn small variant="sec" onClick={()=>window.open(`https://wa.me/57${(client.phone||"").replace(/[-\s]/g,"")}`,"_blank")}>📲 WA</Btn>}
+            <Btn small variant="sec" onClick={onEdit}>✏️ Editar</Btn>
           </div>
         </div>
-        {/* Resumen relacion comercial */}
+        {/* Resumen relación comercial */}
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {st.vs.length>0&&<div style={{background:`${C.green}15`,border:`1px solid ${C.green}40`,borderRadius:8,padding:"7px 12px",fontSize:11}}>
-            <span style={{color:C.muted}}> Le vendi: </span><b style={{color:C.green}}>{fmt(st.totalVendido)}</b><span style={{color:C.muted}}> - {st.vs.length} ventas</span>
+            <span style={{color:C.muted}}>💰 Le vendí: </span><b style={{color:C.green}}>{fmt(st.totalVendido)}</b><span style={{color:C.muted}}> · {st.vs.length} ventas</span>
           </div>}
           {st.cs.length>0&&<div style={{background:`${C.amber}15`,border:`1px solid ${C.amber}40`,borderRadius:8,padding:"7px 12px",fontSize:11}}>
-            <span style={{color:C.muted}}> Le compre: </span><b style={{color:C.amber}}>{fmt(st.totalComprado)}</b><span style={{color:C.muted}}> - {st.cs.length} compras</span>
+            <span style={{color:C.muted}}>🛒 Le compré: </span><b style={{color:C.amber}}>{fmt(st.totalComprado)}</b><span style={{color:C.muted}}> · {st.cs.length} compras</span>
           </div>}
           {Math.abs(st.saldo)>0.01&&<div style={{background:`${st.saldo>0?C.rose:C.blue}15`,border:`1px solid ${st.saldo>0?C.rose:C.blue}40`,borderRadius:8,padding:"7px 12px",fontSize:11}}>
-            <span style={{color:C.muted}}>{st.saldo>0?" Nos debe:":" A su favor:"} </span><b style={{color:st.saldo>0?C.rose:C.blue}}>{fmt(Math.abs(st.saldo))}</b>
+            <span style={{color:C.muted}}>{st.saldo>0?"⚠️ Nos debe:":"✅ A su favor:"} </span><b style={{color:st.saldo>0?C.rose:C.blue}}>{fmt(Math.abs(st.saldo))}</b>
           </div>}
         </div>
-        {client.notes&&<p style={{margin:0,fontSize:11,color:C.muted,background:C.panel,padding:"7px 11px",borderRadius:6}}> {client.notes}</p>}
+        {client.notes&&<p style={{margin:0,fontSize:11,color:C.muted,background:C.panel,padding:"7px 11px",borderRadius:6}}>💬 {client.notes}</p>}
 
         {/* Tabs */}
         <div style={{display:"flex",gap:4,flexWrap:"wrap",borderBottom:`1px solid ${C.border}`,paddingBottom:8}}>
-          {[["resumen"," Resumen"],["cuenta"," Cuenta"],["libro"," Libro Mayor"],["ops"," Operaciones"],["profit"," Rentabilidad"]].map(([v,l])=>
+          {[["resumen","📊 Resumen"],["cuenta","💰 Cuenta"],["libro","📑 Libro Mayor"],["ops","🪙 Operaciones"],["profit","💹 Rentabilidad"]].map(([v,l])=>
             <Pill key={v} label={l} active={tab===v} onClick={()=>setTab(v)}/>)}
         </div>
 
         {/* RESUMEN */}
         {tab==="resumen"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
-            <Stat small label="Total Operaciones" value={st.ops} sub={`${st.vs.length} ventas - ${st.cs.length} compras`}/>
-            <Stat small label="Le Vendi" value={fmtK(st.totalVendido)} accent={C.green} sub={`${st.vs.length} ventas`}/>
-            <Stat small label="Le Compre" value={fmtK(st.totalComprado)} accent={C.amber} sub={`${st.cs.length} compras`}/>
+            <Stat small label="Total Operaciones" value={st.ops} sub={`${st.vs.length} ventas · ${st.cs.length} compras`}/>
+            <Stat small label="Le Vendí" value={fmtK(st.totalVendido)} accent={C.green} sub={`${st.vs.length} ventas`}/>
+            <Stat small label="Le Compré" value={fmtK(st.totalComprado)} accent={C.amber} sub={`${st.cs.length} compras`}/>
             <Stat small label="Utilidad Generada" value={fmtK(st.profit)} accent={C.green}/>
             <Stat small label="Vol. USDT Total" value={fmtQ(st.volBySym.USDT||0,"USDT")} accent={COIN_C.USDT}/>
             <Stat small label="Ticket Promedio" value={fmtK(st.ticket)}/>
@@ -1170,7 +1183,7 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
         {/* CUENTA */}
         {tab==="cuenta"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
-            <Stat small label="Saldo" value={Math.abs(st.saldo)<0.01?"Al dia":fmtK(Math.abs(st.saldo))} accent={Math.abs(st.saldo)<0.01?C.green:st.saldo>0?C.amber:C.blue} sub={Math.abs(st.saldo)<0.01?"":st.saldo>0?"nos debe":"a su favor"}/>
+            <Stat small label="Saldo" value={Math.abs(st.saldo)<0.01?"Al día":fmtK(Math.abs(st.saldo))} accent={Math.abs(st.saldo)<0.01?C.green:st.saldo>0?C.amber:C.blue} sub={Math.abs(st.saldo)<0.01?"":st.saldo>0?"nos debe":"a su favor"}/>
             <Stat small label="Por Cobrar" value={fmtK(st.porCobrar)} accent={st.porCobrar>0?C.amber:C.muted}/>
             <Stat small label="Por Pagar" value={fmtK(st.porPagar)} accent={st.porPagar>0?C.rose:C.muted}/>
             <Stat small label="Total Cobrado" value={fmtK(st.totalCobrado)} accent={C.green}/>
@@ -1178,8 +1191,8 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
             <Stat small label="Utilidad" value={fmtK(st.profit)} accent={C.green}/>
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <Btn variant="sec" small onClick={()=>setPayCtx({title:"Recibir Pago",party:client.name,direction:"recibido",maxAmount:st.porCobrar})}> Recibir Pago</Btn>
-            <Btn variant="sec" small onClick={()=>setPayCtx({title:"Realizar Pago",party:client.name,direction:"realizado",maxAmount:st.porPagar})}> Pagar</Btn>
+            <Btn variant="sec" small onClick={()=>setPayCtx({title:"Recibir Pago",party:client.name,direction:"recibido",maxAmount:st.porCobrar})}>💰 Recibir Pago</Btn>
+            <Btn variant="sec" small onClick={()=>setPayCtx({title:"Realizar Pago",party:client.name,direction:"realizado",maxAmount:st.porPagar})}>💸 Pagar</Btn>
           </div>
         </div>}
 
@@ -1187,13 +1200,13 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
         {tab==="libro"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
           <div style={{display:"flex",gap:12,fontSize:11,color:C.muted,flexWrap:"wrap"}}>
-            <span>Periodo: <b style={{color:C.text}}>{ledger.length} movs</b></span>
+            <span>Período: <b style={{color:C.text}}>{ledger.length} movs</b></span>
             {ledger.length>0&&<span>Saldo actual: <b style={{color:Math.abs(ledger[ledger.length-1].saldo)<0.01?C.green:ledger[ledger.length-1].saldo>0?C.amber:C.blue}}>{fmt(ledger[ledger.length-1].saldo)}</b></span>}
           </div>
-          <Tabla cols={ledCols} rows={ledger} emptyMsg="Sin movimientos en este periodo"/>
+          <Tabla cols={ledCols} rows={ledger} emptyMsg="Sin movimientos en este período"/>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <Btn variant="sec" small onClick={exportExtracto}> Exportar Excel</Btn>
-            <Btn variant="sec" small onClick={()=>setPrinting(true)}> Estado de Cuenta PDF</Btn>
+            <Btn variant="sec" small onClick={exportExtracto}>📥 Exportar Excel</Btn>
+            <Btn variant="sec" small onClick={()=>setPrinting(true)}>🖨️ Estado de Cuenta PDF</Btn>
           </div>
         </div>}
 
@@ -1223,24 +1236,24 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
 
     {printing&&<div id="print-area" style={{position:"fixed",inset:0,background:"#fff",color:"#111",zIndex:1000,overflowY:"auto",padding:28,fontFamily:"Inter,sans-serif"}}>
       <div className="no-print" style={{display:"flex",gap:8,marginBottom:14}}>
-        <button onClick={()=>window.print()} style={{padding:"8px 16px",background:"#26A17B",color:"#fff",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}> Imprimir / PDF</button>
+        <button onClick={()=>window.print()} style={{padding:"8px 16px",background:"#26A17B",color:"#fff",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>🖨️ Imprimir / PDF</button>
         <button onClick={()=>setPrinting(false)} style={{padding:"8px 16px",background:"#eee",color:"#111",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>Cerrar</button>
       </div>
-      <h1 style={{margin:"0 0 2px",fontSize:20}}>Estado de Cuenta - {client.name}</h1>
-      <p style={{margin:"0 0 12px",fontSize:11,color:"#666"}}>Generado: {new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} - Casa de Cambio Pro 3.0</p>
+      <h1 style={{margin:"0 0 2px",fontSize:20}}>Estado de Cuenta · {client.name}</h1>
+      <p style={{margin:"0 0 12px",fontSize:11,color:"#666"}}>Generado: {new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · Casa de Cambio Pro 3.0</p>
       <div style={{display:"flex",gap:18,flexWrap:"wrap",marginBottom:14,fontSize:12}}>
         <span><b>Ops:</b> {st.ops}</span><span><b>Vol:</b> {fmt(st.volCOP)}</span><span><b>USDT:</b> {fmtQ(st.volBySym.USDT||0,"USDT")}</span>
-        <span><b>Saldo:</b> {Math.abs(st.saldo)<0.01?"Al dia":`${fmt(Math.abs(st.saldo))} ${st.saldo>0?"(nos debe)":"(a su favor)"}`}</span>
+        <span><b>Saldo:</b> {Math.abs(st.saldo)<0.01?"Al día":`${fmt(Math.abs(st.saldo))} ${st.saldo>0?"(nos debe)":"(a su favor)"}`}</span>
       </div>
       <table style={{width:"100%",borderCollapse:"collapse",fontSize:10}}>
-        <thead><tr style={{background:"#f3f3f3"}}>{["Fecha","Documento","Concepto","Debito","Credito","Saldo"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left",borderBottom:"2px solid #ddd"}}>{h}</th>)}</tr></thead>
+        <thead><tr style={{background:"#f3f3f3"}}>{["Fecha","Documento","Concepto","Débito","Crédito","Saldo"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left",borderBottom:"2px solid #ddd"}}>{h}</th>)}</tr></thead>
         <tbody>{ledger.map(r=><tr key={r.id}><td style={{padding:"5px 8px",borderBottom:"1px solid #eee"}}>{r.date}</td><td style={{padding:"5px 8px",borderBottom:"1px solid #eee",fontFamily:"monospace",fontSize:9}}>{r.doc||""}</td><td style={{padding:"5px 8px",borderBottom:"1px solid #eee"}}>{r.concept}</td><td style={{padding:"5px 8px",borderBottom:"1px solid #eee"}}>{r.debit?fmt(r.debit):""}</td><td style={{padding:"5px 8px",borderBottom:"1px solid #eee"}}>{r.credit?fmt(r.credit):""}</td><td style={{padding:"5px 8px",borderBottom:"1px solid #eee",fontWeight:600}}>{fmt(r.saldo)}</td></tr>)}</tbody>
       </table>
     </div>}
   </React.Fragment>;
 }
 
-//  MERGED CONTACTS (clientes + proveedores unidos por nombre) 
+// ─── MERGED CONTACTS (clientes + proveedores unidos por nombre) ──────────
 function useContacts(clients, suppliers) {
   return useMemo(() => {
     const map = {};
@@ -1272,7 +1285,7 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast,suppliers}
     &&(tagF==="all"||(tagF==="activo"||tagF==="inactivo"?((c.status||"activo")===tagF):(c.tags||[]).includes(tagF))))
     .sort((a,b)=>sort==="profit"?b._profit-a._profit:sort==="vol"?b._vol-a._vol:sort==="ops"?b._ops-a._ops:a.name.localeCompare(b.name));
 
-  const delClient=async r=>{if(!confirm(`Eliminar cliente ${r.name}?`))return;try{await api.deleteClient(r.id);await reload();toast("Cliente eliminado");}catch(e){toast(e.message,"error");};};
+  const delClient=async r=>{if(!confirm(`¿Eliminar cliente ${r.name}?`))return;try{await api.deleteClient(r.id);await reload();toast("Cliente eliminado");}catch(e){toast(e.message,"error");};};
   const cols=[
     {key:"name",label:"Contacto",render:(v,r)=><div>
       <b style={{fontSize:13}}>{v}</b>
@@ -1286,18 +1299,18 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast,suppliers}
     {key:"_ops",label:"Ops"},{key:"_vol",label:"Volumen",render:v=><span style={{color:C.blue,fontWeight:600}}>{fmtK(v)}</span>},
     {key:"_usdt",label:"USDT",render:v=><span style={{color:COIN_C.USDT,fontFamily:"monospace"}}>{fmtQ(v,"USDT")}</span>},
     {key:"_profit",label:"Utilidad",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmtK(v)}</b>},
-    {key:"_saldo",label:"Saldo",render:v=>Math.abs(v)<0.01?<span style={{color:C.muted}}>Al dia</span>:v>0?<Badge label={`Debe ${fmtK(v)}`} color={C.amber}/>:<Badge label={`Favor ${fmtK(-v)}`} color={C.blue}/>},
-    {key:"_daysSince",label:"Inactividad",render:v=>v===null?"-":v===0?<span style={{color:C.green}}>Hoy</span>:v>30?<span style={{color:C.rose}}>{v}d</span>:`${v}d`},
-    {key:"cacc",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();delClient(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button>},
+    {key:"_saldo",label:"Saldo",render:v=>Math.abs(v)<0.01?<span style={{color:C.muted}}>Al día</span>:v>0?<Badge label={`Debe ${fmtK(v)}`} color={C.amber}/>:<Badge label={`Favor ${fmtK(-v)}`} color={C.blue}/>},
+    {key:"_daysSince",label:"Inactividad",render:v=>v===null?"—":v===0?<span style={{color:C.green}}>Hoy</span>:v>30?<span style={{color:C.rose}}>{v}d</span>:`${v}d`},
+    {key:"cacc",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();delClient(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button>},
   ];
 
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Contactos" sub={`${contacts.length} contactos - clientes y proveedores - toca para ver ficha`} action="Nuevo Cliente" onAction={()=>{setEditC(null);setFormModal(true);}}
-      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Nombre","Doc","Tel","Ciudad","Ops","VolCOP","USDT","Utilidad","Saldo","Ultima"],filtered.map(c=>[c.name,c.document||"",c.phone||"",c.city||"",c._ops,c._vol,c._usdt,c._profit,c._saldo,c._last||""]),`clientes-${today()}.csv`)}> Excel</Btn>}/>
+    <Head title="Contactos" sub={`${contacts.length} contactos · clientes y proveedores · toca para ver ficha`} action="Nuevo Cliente" onAction={()=>{setEditC(null);setFormModal(true);}}
+      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Nombre","Doc","Tel","Ciudad","Ops","VolCOP","USDT","Utilidad","Saldo","Última"],filtered.map(c=>[c.name,c.document||"",c.phone||"",c.city||"",c._ops,c._vol,c._usdt,c._profit,c._saldo,c._last||""]),`clientes-${today()}.csv`)}>📥 Excel</Btn>}/>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
       <div style={{flex:1,minWidth:200,position:"relative"}}>
-        <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.muted,fontSize:12}}></span>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar nombre, ciudad, telefono..." style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 11px 8px 30px",color:C.text,fontSize:13,outline:"none",width:"100%"}}/>
+        <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.muted,fontSize:12}}>🔍</span>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar nombre, ciudad, teléfono..." style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 11px 8px 30px",color:C.text,fontSize:13,outline:"none",width:"100%"}}/>
       </div>
       <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
         {[["profit","+ Rentables"],["vol","+ Volumen"],["ops","+ Activos"],["name","A-Z"]].map(([v,l])=><Pill key={v} label={l} active={sort===v} onClick={()=>setSort(v)}/>)}
@@ -1317,21 +1330,21 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast,suppliers}
   </div>;
 }
 
-//  PROVEEDORES 
+// ─── PROVEEDORES ──────────────────────────────────────────────────────────
 function SuppliersModule({suppliers,purchases,reload,toast}){
   const[modal,setModal]=useState(false);const empty={name:"",contact:"",phone:"",notes:""};
   const[form,setForm]=useState(empty);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const enriched=suppliers.map(s=>{const ops=purchases.filter(p=>norm(p.supplier)===norm(s.name));return{...s,_ops:ops.length,_vol:ops.reduce((a,p)=>a+p.total,0),_usdt:ops.filter(p=>p.symbol==="USDT").reduce((a,p)=>a+ +p.quantity,0),_pend:ops.reduce((a,p)=>a+pendOf(p),0)};}).sort((a,b)=>b._vol-a._vol);
   const[editRow,setEditRow]=useState(null);
   const openEdit=r=>{setEditRow(r);setForm({name:r.name||"",contact:r.contact||"",phone:r.phone||"",notes:r.notes||""});setModal(true);};
-  const del=async r=>{if(!confirm(`Eliminar proveedor ${r.name}?`))return;try{await api.deleteSupplier(r.id);await reload();toast("Proveedor eliminado");}catch(e){toast(e.message,"error");};};
+  const del=async r=>{if(!confirm(`¿Eliminar proveedor ${r.name}?`))return;try{await api.deleteSupplier(r.id);await reload();toast("Proveedor eliminado");}catch(e){toast(e.message,"error");};};
   const saveSup=async()=>{if(!form.name){toast("Nombre requerido","error");return;}try{if(editRow){await api.updateSupplier(editRow.id,form);toast("Proveedor actualizado");}else{await api.addSupplier(form);toast("Proveedor creado");}await reload();setModal(false);setEditRow(null);setForm(empty);}catch(e){toast(e.message,"error");};};
   const cols=[
-    {key:"name",label:"Proveedor",render:v=><b>{v}</b>},{key:"phone",label:"Telefono"},
+    {key:"name",label:"Proveedor",render:v=><b>{v}</b>},{key:"phone",label:"Teléfono"},
     {key:"_ops",label:"Compras"},{key:"_vol",label:"Volumen",render:v=><span style={{color:C.amber,fontWeight:600}}>{fmtK(v)}</span>},
     {key:"_usdt",label:"USDT",render:v=><span style={{color:COIN_C.USDT,fontFamily:"monospace"}}>{fmtQ(v,"USDT")}</span>},
-    {key:"_pend",label:"Le Debemos",render:v=>v>0.01?<b style={{color:C.rose}}>{fmt(v)}</b>:<span style={{color:C.muted}}>Al dia</span>},
-    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button></div>},
+    {key:"_pend",label:"Le Debemos",render:v=>v>0.01?<b style={{color:C.rose}}>{fmt(v)}</b>:<span style={{color:C.muted}}>Al día</span>},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Proveedores de Liquidez" sub={`${suppliers.length} proveedores`} action="Nuevo" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}/>
@@ -1339,7 +1352,7 @@ function SuppliersModule({suppliers,purchases,reload,toast}){
     {modal&&<Modal title={editRow?"Editar Proveedor":"Nuevo Proveedor"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <Inp label="Nombre / alias" value={form.name} onChange={f("name")}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Contacto" value={form.contact} onChange={f("contact")}/><Inp label="Telefono" value={form.phone} onChange={f("phone")}/></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Contacto" value={form.contact} onChange={f("contact")}/><Inp label="Teléfono" value={form.phone} onChange={f("phone")}/></div>
         <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
         <Btn onClick={saveSup} full>{editRow?"Actualizar":"Guardar"}</Btn>
       </div>
@@ -1347,7 +1360,7 @@ function SuppliersModule({suppliers,purchases,reload,toast}){
   </div>;
 }
 
-//  FLUJO DE CAJA 
+// ─── FLUJO DE CAJA ────────────────────────────────────────────────────────
 function CashFlowModule({cashflow,reload,toast}){
   const[modal,setModal]=useState(false);const[filter,setFilter]=useState("all");
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
@@ -1357,16 +1370,16 @@ function CashFlowModule({cashflow,reload,toast}){
   const filtered=cashflow.filter(e=>inP(e.date,period,from,to)&&(filter==="all"||e.type===filter));
   const ing=filtered.filter(e=>e.type==="ingreso").reduce((a,e)=>a+e.amount,0);
   const egr=filtered.filter(e=>e.type==="egreso").reduce((a,e)=>a+e.amount,0);
-  const save=async()=>{if(!form.amount||+form.amount<=0){toast("Valor invalido","error");return;}try{await api.addCashFlow(form);await reload();setModal(false);setForm(empty);toast("Registrado");}catch(e){toast(e.message,"error");}};
+  const save=async()=>{if(!form.amount||+form.amount<=0){toast("Valor inválido","error");return;}try{await api.addCashFlow(form);await reload();setModal(false);setForm(empty);toast("Registrado");}catch(e){toast(e.message,"error");}};
   const cols=[
     {key:"date",label:"Fecha"},{key:"type",label:"Tipo",render:v=><span style={{color:v==="ingreso"?C.green:C.rose,fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{v}</span>},
-    {key:"description",label:"Descripcion"},{key:"method",label:"Metodo"},
+    {key:"description",label:"Descripción"},{key:"method",label:"Método"},
     {key:"amount",label:"Valor",render:(v,r)=><b style={{color:r.type==="ingreso"?C.green:C.rose}}>{r.type==="ingreso"?"+":"-"}{fmt(v)}</b>},
-    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();setCFEdit(r);setCFForm({date:r.date,type:r.type,description:r.description||"",amount:String(r.amount),method:r.method||"transferencia"});setCFModal(true);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button><button onClick={async e=>{e.stopPropagation();try{await api.delCashFlow(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button></div>},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();setCFEdit(r);setCFForm({date:r.date,type:r.type,description:r.description||"",amount:String(r.amount),method:r.method||"transferencia"});setCFModal(true);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={async e=>{e.stopPropagation();try{await api.delCashFlow(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   const[cfEdit,setCFEdit]=useState(null);const[cfModal,setCFModal]=useState(false);const[cfForm,setCFForm]=useState({date:today(),type:"ingreso",description:"",amount:"",method:"transferencia"});
   const saveCF=async()=>{
-    if(!cfForm.amount||+cfForm.amount<=0){toast("Valor invalido","error");return;}
+    if(!cfForm.amount||+cfForm.amount<=0){toast("Valor inválido","error");return;}
     try{
       if(cfEdit){await api.updateCashFlow(cfEdit.id,cfForm);toast("Movimiento actualizado");}
       else{await api.addCashFlow(cfForm);toast("Registrado");}
@@ -1375,7 +1388,7 @@ function CashFlowModule({cashflow,reload,toast}){
   };
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Flujo de Caja" action="Movimiento" onAction={()=>{setCFEdit(null);setCFForm({date:today(),type:"ingreso",description:"",amount:"",method:"transferencia"});setCFModal(true);}}
-      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Tipo","Descripcion","Metodo","Valor"],filtered.map(e=>[e.date,e.type,e.description,e.method,e.amount]),`flujo-caja-${today()}.csv`)}> Excel</Btn>}/>
+      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Tipo","Descripción","Método","Valor"],filtered.map(e=>[e.date,e.type,e.description,e.method,e.amount]),`flujo-caja-${today()}.csv`)}>📥 Excel</Btn>}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
       <Stat small label="Saldo Total" value={fmtK(balance)} accent={balance>=0?C.accentL:C.rose}/>
       <Stat small label="Ingresos" value={fmtK(ing)} accent={C.green}/>
@@ -1390,26 +1403,26 @@ function CashFlowModule({cashflow,reload,toast}){
     {cfModal&&<Modal title={cfEdit?"Editar Movimiento":"Nuevo Movimiento"} onClose={()=>{setCFModal(false);setCFEdit(null);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Fecha" type="date" value={cfForm.date} onChange={v=>setCFForm(p=>({...p,date:v}))}/><Sel label="Tipo" value={cfForm.type} onChange={v=>setCFForm(p=>({...p,type:v}))} options={[{value:"ingreso",label:"Ingreso"},{value:"egreso",label:"Egreso"}]}/></div>
-        <Inp label="Descripcion" value={cfForm.description} onChange={v=>setCFForm(p=>({...p,description:v}))} placeholder="Ej: Aporte de capital"/>
+        <Inp label="Descripción" value={cfForm.description} onChange={v=>setCFForm(p=>({...p,description:v}))} placeholder="Ej: Aporte de capital"/>
         <Inp label="Valor" type="number" value={cfForm.amount} onChange={v=>setCFForm(p=>({...p,amount:v}))}/>
-        <Sel label="Metodo" value={cfForm.method} onChange={v=>setCFForm(p=>({...p,method:v}))} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+        <Sel label="Método" value={cfForm.method} onChange={v=>setCFForm(p=>({...p,method:v}))} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
         <Btn onClick={saveCF} full>{cfEdit?"Actualizar":"Registrar"}</Btn>
       </div>
     </Modal>}
   </div>;
 }
 
-//  GASTOS 
+// ─── GASTOS ───────────────────────────────────────────────────────────────
 function ExpensesModule({expenses,reload,toast}){
-  const[modal,setModal]=useState(false);const CATS=["Arriendo","Servicios","Comisiones","Publicidad","Nomina","Otros"];
-  const CC={Arriendo:C.blue,Servicios:C.green,Comisiones:C.amber,Publicidad:C.purple,"Nomina":C.rose,Otros:C.slate};
+  const[modal,setModal]=useState(false);const CATS=["Arriendo","Servicios","Comisiones","Publicidad","Nómina","Otros"];
+  const CC={Arriendo:C.blue,Servicios:C.green,Comisiones:C.amber,Publicidad:C.purple,"Nómina":C.rose,Otros:C.slate};
   const empty={date:today(),category:"Comisiones",description:"",amount:""};
   const[form,setForm]=useState(empty);const f=k=>v=>setForm(p=>({...p,[k]:v}));
-  const save=async()=>{if(!form.amount||+form.amount<=0){toast("Valor invalido","error");return;}try{await api.addExpense(form);await reload();setModal(false);setForm(empty);toast("Gasto registrado");}catch(e){toast(e.message,"error");}};
+  const save=async()=>{if(!form.amount||+form.amount<=0){toast("Valor inválido","error");return;}try{await api.addExpense(form);await reload();setModal(false);setForm(empty);toast("Gasto registrado");}catch(e){toast(e.message,"error");}};
   const[editRow,setEditRow]=useState(null);
   const openEdit=r=>{setEditRow(r);setForm({date:r.date,category:r.category||"Comisiones",description:r.description||"",amount:String(r.amount)});setModal(true);};
   const save2=async()=>{
-    if(!form.amount||+form.amount<=0){toast("Valor invalido","error");return;}
+    if(!form.amount||+form.amount<=0){toast("Valor inválido","error");return;}
     try{
       if(editRow){await api.updateExpense(editRow.id,form);toast("Gasto actualizado");}
       else{await api.addExpense(form);toast("Gasto registrado");}
@@ -1417,17 +1430,17 @@ function ExpensesModule({expenses,reload,toast}){
     }catch(e){toast(e.message,"error");}
   };
   const cols=[
-    {key:"date",label:"Fecha"},{key:"category",label:"Categoria",render:v=><Badge label={v} color={CC[v]||C.slate}/>},
-    {key:"description",label:"Descripcion"},{key:"amount",label:"Valor",render:v=><b style={{color:C.rose}}>{fmt(v)}</b>},
-    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button><button onClick={async e=>{e.stopPropagation();try{await api.delExpense(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}></button></div>},
+    {key:"date",label:"Fecha"},{key:"category",label:"Categoría",render:v=><Badge label={v} color={CC[v]||C.slate}/>},
+    {key:"description",label:"Descripción"},{key:"amount",label:"Valor",render:v=><b style={{color:C.rose}}>{fmt(v)}</b>},
+    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={async e=>{e.stopPropagation();try{await api.delExpense(r.id);await reload();toast("Eliminado");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Gastos Operativos" sub={`Total: ${fmt(expenses.reduce((a,e)=>a+e.amount,0))}`} action="Nuevo Gasto" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}/>
     <Tabla cols={cols} rows={expenses} emptyMsg="Sin gastos"/>
     {modal&&<Modal title={editRow?"Editar Gasto":"Nuevo Gasto"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);}}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/><Sel label="Categoria" value={form.category} onChange={f("category")} options={CATS.map(c=>({value:c,label:c}))}/></div>
-        <Inp label="Descripcion" value={form.description} onChange={f("description")}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/><Sel label="Categoría" value={form.category} onChange={f("category")} options={CATS.map(c=>({value:c,label:c}))}/></div>
+        <Inp label="Descripción" value={form.description} onChange={f("description")}/>
         <Inp label="Valor" type="number" value={form.amount} onChange={f("amount")}/>
         <Btn onClick={save2} full>{editRow?"Actualizar":"Guardar"}</Btn>
       </div>
@@ -1435,7 +1448,7 @@ function ExpensesModule({expenses,reload,toast}){
   </div>;
 }
 
-//  RENTABILIDAD 
+// ─── RENTABILIDAD ─────────────────────────────────────────────────────────
 function ProfitModule({sales,expenses}){
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
   const fs=sales.filter(s=>inP(s.date,period,from,to));const fe=expenses.filter(e=>inP(e.date,period,from,to));
@@ -1445,11 +1458,11 @@ function ProfitModule({sales,expenses}){
   const dayMap={};fs.forEach(s=>dayMap[s.date]=(dayMap[s.date]||0)+(+s.gross_profit||0));
   const days=Object.keys(dayMap).sort().slice(-31);
   const bySym=COINS.map(sym=>({sym,rev:fs.filter(s=>s.symbol===sym).reduce((a,s)=>a+s.total,0),profit:fs.filter(s=>s.symbol===sym).reduce((a,s)=>a+(+s.gross_profit||0),0),ops:fs.filter(s=>s.symbol===sym).length})).filter(r=>r.ops>0).sort((a,b)=>b.profit-a.profit);
-  const byCli={};fs.forEach(s=>{const k=norm(s.client)||"(anon)";if(!byCli[k])byCli[k]={name:s.client||"(anon)",profit:0,ops:0};byCli[k].profit+=(+s.gross_profit||0);byCli[k].ops++;});
+  const byCli={};fs.forEach(s=>{const k=norm(s.client)||"(anón)";if(!byCli[k])byCli[k]={name:s.client||"(anón)",profit:0,ops:0};byCli[k].profit+=(+s.gross_profit||0);byCli[k].ops++;});
   const topCli=Object.values(byCli).sort((a,b)=>b.profit-a.profit).slice(0,8);
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Rentabilidad" sub="utilidad real - costo promedio ponderado"
-      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","P.Venta","CPP","Ingreso","Costo","Utilidad","Cliente"],fs.map(s=>[s.date,s.symbol,s.quantity,s.unit_price,s.avg_cost_used,s.total,s.cogs,s.gross_profit,s.client||""]),`rentabilidad-${today()}.csv`)}> Excel</Btn>}/>
+    <Head title="Rentabilidad" sub="utilidad real · costo promedio ponderado"
+      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","P.Venta","CPP","Ingreso","Costo","Utilidad","Cliente"],fs.map(s=>[s.date,s.symbol,s.quantity,s.unit_price,s.avg_cost_used,s.total,s.cogs,s.gross_profit,s.client||""]),`rentabilidad-${today()}.csv`)}>📥 Excel</Btn>}/>
     <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
       <Stat small label="Ingresos" value={fmtK(rev)} accent={C.blue}/>
@@ -1461,9 +1474,9 @@ function ProfitModule({sales,expenses}){
     </div>
     <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16}}>
       <h4 style={{margin:"0 0 12px",fontSize:13,fontWeight:700}}>Estado de Resultados</h4>
-      {[{l:"(+) Ingresos",v:rev,c:C.text},{l:"(-) Costo vendido",v:cogs,c:C.rose},{l:"= Utilidad Bruta",v:gross,c:C.amber,b:1},{l:"(-) Gastos",v:exp,c:C.rose},{l:"= Utilidad Neta",v:net,c:net>=0?C.green:C.rose,b:1,big:1}].map((r,i,arr)=><div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none"}}><span style={{fontSize:r.big?14:12,fontWeight:r.b?700:400}}>{r.l}</span><span style={{fontSize:r.big?18:13,fontWeight:r.b?700:500,color:r.c,fontFamily:"monospace"}}>{fmt(r.v)}</span></div>)}
+      {[{l:"(+) Ingresos",v:rev,c:C.text},{l:"(−) Costo vendido",v:cogs,c:C.rose},{l:"= Utilidad Bruta",v:gross,c:C.amber,b:1},{l:"(−) Gastos",v:exp,c:C.rose},{l:"= Utilidad Neta",v:net,c:net>=0?C.green:C.rose,b:1,big:1}].map((r,i,arr)=><div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<arr.length-1?`1px solid ${C.border}`:"none"}}><span style={{fontSize:r.big?14:12,fontWeight:r.b?700:400}}>{r.l}</span><span style={{fontSize:r.big?18:13,fontWeight:r.b?700:500,color:r.c,fontFamily:"monospace"}}>{fmt(r.v)}</span></div>)}
     </div>
-    {days.length>1&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14}}><h4 style={{margin:"0 0 10px",fontSize:12,fontWeight:600}}>Utilidad por Dia</h4><Bars data={days.map(d=>Math.max(0,dayMap[d]))} labels={days.map(d=>d.slice(8))} color={C.green} h={80}/></div>}
+    {days.length>1&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14}}><h4 style={{margin:"0 0 10px",fontSize:12,fontWeight:600}}>Utilidad por Día</h4><Bars data={days.map(d=>Math.max(0,dayMap[d]))} labels={days.map(d=>d.slice(8))} color={C.green} h={80}/></div>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12}}>
       {bySym.length>0&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14}}><h4 style={{margin:"0 0 12px",fontSize:12,fontWeight:600}}>Por Moneda</h4>{bySym.map(r=><div key={r.sym} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}><span><span style={{display:"inline-block",width:7,height:7,borderRadius:"50%",background:COIN_C[r.sym],marginRight:7}}/>{r.sym} <span style={{color:C.muted,fontSize:10}}>({r.ops})</span></span><b style={{color:r.profit>=0?C.green:C.rose}}>{fmt(r.profit)}</b></div>)}</div>}
       {topCli.length>0&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14}}><h4 style={{margin:"0 0 12px",fontSize:12,fontWeight:600}}>Por Cliente</h4>{topCli.map((r,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}><span>{r.name} <span style={{color:C.muted,fontSize:10}}>({r.ops})</span></span><b style={{color:r.profit>=0?C.green:C.rose}}>{fmt(r.profit)}</b></div>)}</div>}
@@ -1471,7 +1484,7 @@ function ProfitModule({sales,expenses}){
   </div>;
 }
 
-//  METAS 
+// ─── METAS ────────────────────────────────────────────────────────────────
 function GoalsModule({goals,sales,purchases,clients,cashflow,inventory,reload,toast}){
   const[scope,setScope]=useState("month");const[modal,setModal]=useState(false);
   const key=scope==="month"?mKey():yKey();const g=goals.find(x=>x.month===key)||{};
@@ -1487,7 +1500,7 @@ function GoalsModule({goals,sales,purchases,clients,cashflow,inventory,reload,to
   const now=new Date(),dayN=scope==="month"?now.getDate():Math.ceil((now-new Date(now.getFullYear(),0,1))/86400000);
   const dayT=scope==="month"?new Date(now.getFullYear(),now.getMonth()+1,0).getDate():365;
   const proj=v=>dayN>0?Math.round(v/dayN*dayT):0;
-  const eta=(cur,target)=>{if(target<=0)return"-";if(cur>=target)return" Cumplida";const rate=cur/dayN;if(rate<=0)return"sin ritmo";const need=Math.ceil((target-cur)/rate);const d=new Date();d.setDate(d.getDate()+need);const limit=scope==="month"?new Date(now.getFullYear(),now.getMonth()+1,0):new Date(now.getFullYear(),11,31);return d<=limit?d.toLocaleDateString("es-CO",{day:"numeric",month:"short"}):"fuera del periodo";};
+  const eta=(cur,target)=>{if(target<=0)return"—";if(cur>=target)return"✓ Cumplida";const rate=cur/dayN;if(rate<=0)return"sin ritmo";const need=Math.ceil((target-cur)/rate);const d=new Date();d.setDate(d.getDate()+need);const limit=scope==="month"?new Date(now.getFullYear(),now.getMonth()+1,0):new Date(now.getFullYear(),11,31);return d<=limit?d.toLocaleDateString("es-CO",{day:"numeric",month:"short"}):"fuera del período";};
   const metrics=[
     {key:"profit_goal",label:"Utilidad",cur:profit,color:C.green,f:fmtK,proj:1},
     {key:"sales_goal",label:"Volumen",cur:vol,color:C.blue,f:fmtK,proj:1},
@@ -1499,8 +1512,8 @@ function GoalsModule({goals,sales,purchases,clients,cashflow,inventory,reload,to
   const openEdit=()=>{const init={};metrics.forEach(m=>init[m.key]=g[m.key]||"");setForm(init);setModal(true);};
   const save=async()=>{try{const payload={};metrics.forEach(m=>payload[m.key]=+form[m.key]||0);await api.saveGoal(key,payload);await reload();setModal(false);toast("Metas guardadas");}catch(e){toast(e.message,"error");}};
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Metas y Objetivos" sub={scope==="month"?`Mes: ${key}`:`Ano: ${key}`} action="Editar Metas" onAction={openEdit}/>
-    <div style={{display:"flex",gap:5}}><Pill label=" Mensuales" active={scope==="month"} onClick={()=>setScope("month")}/><Pill label=" Anuales" active={scope==="year"} onClick={()=>setScope("year")}/></div>
+    <Head title="Metas y Objetivos" sub={scope==="month"?`Mes: ${key}`:`Año: ${key}`} action="Editar Metas" onAction={openEdit}/>
+    <div style={{display:"flex",gap:5}}><Pill label="📅 Mensuales" active={scope==="month"} onClick={()=>setScope("month")}/><Pill label="🗓 Anuales" active={scope==="year"} onClick={()=>setScope("year")}/></div>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {metrics.map(m=>{const target=+g[m.key]||0;const pct=target>0?Math.min(100,Math.round((m.cur/target)*100)):0;return <div key={m.key} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14}}>
         <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:4,marginBottom:6}}>
@@ -1515,7 +1528,7 @@ function GoalsModule({goals,sales,purchases,clients,cashflow,inventory,reload,to
         <div style={{height:6,background:C.border,borderRadius:3}}><div style={{height:"100%",background:pct>=100?C.green:m.color,borderRadius:3,width:`${pct}%`,transition:"width .5s"}}/></div>
       </div>;})}
     </div>
-    {modal&&<Modal title={`Metas ${scope==="month"?"del Mes":"del Ano"}`} onClose={()=>setModal(false)}>
+    {modal&&<Modal title={`Metas ${scope==="month"?"del Mes":"del Año"}`} onClose={()=>setModal(false)}>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {metrics.map(m=><Inp key={m.key} label={`Meta ${m.label}`} type="number" value={form[m.key]||""} onChange={f(m.key)}/>)}
         <Btn onClick={save} full>Guardar Metas</Btn>
@@ -1524,7 +1537,7 @@ function GoalsModule({goals,sales,purchases,clients,cashflow,inventory,reload,to
   </div>;
 }
 
-//  CIERRES 
+// ─── CIERRES ──────────────────────────────────────────────────────────────
 function ClosingsModule({closings,sales,purchases,expenses,cashflow,inventory,reload,toast}){
   const[saving,setSaving]=useState(false);const[detail,setDetail]=useState(null);
   const gen=async(type)=>{
@@ -1534,51 +1547,51 @@ function ClosingsModule({closings,sales,purchases,expenses,cashflow,inventory,re
     const fs=sales.filter(s=>s.date>=start&&s.date<=t),fp=purchases.filter(p=>p.date>=start&&p.date<=t),fe=expenses.filter(e=>e.date>=start&&e.date<=t);
     const gross=fs.reduce((a,s)=>a+(+s.gross_profit||0),0),exp=fe.reduce((a,e)=>a+e.amount,0);
     setSaving(true);
-    try{await api.addClosing({type,period_start:start,period_end:t,purchases_total:fp.reduce((a,p)=>a+p.total,0),sales_total:fs.reduce((a,s)=>a+s.total,0),gross_profit:gross,expenses_total:exp,net_profit:gross-exp,cash_balance:cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0),inventory_value:inventory.reduce((a,i)=>a+(+i.total_invested||0),0),inventory_snapshot:inventory.map(i=>({symbol:i.symbol,qty:+i.quantity,avg:+i.avg_cost,inv:+i.total_invested})),notes:`${fs.length} ventas - ${fp.length} compras`});await reload();toast(`Cierre ${type} generado`);}
+    try{await api.addClosing({type,period_start:start,period_end:t,purchases_total:fp.reduce((a,p)=>a+p.total,0),sales_total:fs.reduce((a,s)=>a+s.total,0),gross_profit:gross,expenses_total:exp,net_profit:gross-exp,cash_balance:cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0),inventory_value:inventory.reduce((a,i)=>a+(+i.total_invested||0),0),inventory_snapshot:inventory.map(i=>({symbol:i.symbol,qty:+i.quantity,avg:+i.avg_cost,inv:+i.total_invested})),notes:`${fs.length} ventas · ${fp.length} compras`});await reload();toast(`Cierre ${type} generado`);}
     catch(e){toast(e.message,"error");}finally{setSaving(false);}
   };
   const cols=[
     {key:"created_at",label:"Generado",render:v=>v&&v.slice(0,16).replace("T"," ")},
     {key:"type",label:"Tipo",render:v=><Badge label={v} color={v==="diario"?C.blue:v==="semanal"?C.amber:C.purple}/>},
-    {key:"per",label:"Periodo",render:(_,r)=><span style={{fontSize:11}}>{r.period_start} -> {r.period_end}</span>},
+    {key:"per",label:"Período",render:(_,r)=><span style={{fontSize:11}}>{r.period_start} → {r.period_end}</span>},
     {key:"sales_total",label:"Ventas",render:v=><span style={{color:C.blue}}>{fmtK(v)}</span>},
     {key:"net_profit",label:"Utilidad Neta",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmtK(v)}</b>},
     {key:"cash_balance",label:"Caja",render:v=>fmtK(v)},{key:"inventory_value",label:"Inventario",render:v=>fmtK(v)},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Cierres Contables" extra={<Btn small variant="sec" onClick={()=>exportCSV(["Generado","Tipo","Inicio","Fin","Ventas","Compras","Ut.Bruta","Gastos","Ut.Neta","Caja","Inventario"],closings.map(c=>[c.created_at?.slice(0,16),c.type,c.period_start,c.period_end,c.sales_total,c.purchases_total,c.gross_profit,c.expenses_total,c.net_profit,c.cash_balance,c.inventory_value]),`cierres-${today()}.csv`)}> Excel</Btn>}/>
+    <Head title="Cierres Contables" extra={<Btn small variant="sec" onClick={()=>exportCSV(["Generado","Tipo","Inicio","Fin","Ventas","Compras","Ut.Bruta","Gastos","Ut.Neta","Caja","Inventario"],closings.map(c=>[c.created_at?.slice(0,16),c.type,c.period_start,c.period_end,c.sales_total,c.purchases_total,c.gross_profit,c.expenses_total,c.net_profit,c.cash_balance,c.inventory_value]),`cierres-${today()}.csv`)}>📥 Excel</Btn>}/>
     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-      <Btn onClick={()=>gen("diario")} disabled={saving} icon="">Cierre Diario</Btn>
-      <Btn variant="sec" onClick={()=>gen("semanal")} disabled={saving} icon="">Cierre Semanal</Btn>
-      <Btn variant="sec" onClick={()=>gen("mensual")} disabled={saving} icon="">Cierre Mensual</Btn>
+      <Btn onClick={()=>gen("diario")} disabled={saving} icon="☀️">Cierre Diario</Btn>
+      <Btn variant="sec" onClick={()=>gen("semanal")} disabled={saving} icon="📅">Cierre Semanal</Btn>
+      <Btn variant="sec" onClick={()=>gen("mensual")} disabled={saving} icon="🗓">Cierre Mensual</Btn>
     </div>
-    <Tabla cols={cols} rows={closings} onRowClick={setDetail} emptyMsg="Sin cierres - genera el primero"/>
-    {detail&&<Modal title={`Cierre ${detail.type} - ${detail.period_end}`} onClose={()=>setDetail(null)}>
+    <Tabla cols={cols} rows={closings} onRowClick={setDetail} emptyMsg="Sin cierres — genera el primero"/>
+    {detail&&<Modal title={`Cierre ${detail.type} · ${detail.period_end}`} onClose={()=>setDetail(null)}>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {[["Periodo",`${detail.period_start} -> ${detail.period_end}`],["Ventas",fmt(detail.sales_total)],["Compras",fmt(detail.purchases_total)],["Utilidad Bruta",fmt(detail.gross_profit)],["Gastos",fmt(detail.expenses_total)],["Utilidad Neta",fmt(detail.net_profit)],["Caja",fmt(detail.cash_balance)],["Inventario",fmt(detail.inventory_value)]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,padding:"6px 0",fontSize:12}}><span style={{color:C.muted}}>{l}</span><b>{v}</b></div>)}
-        {detail.inventory_snapshot&&<div><h4 style={{margin:"8px 0",fontSize:12}}>Inventario al cierre</h4>{(detail.inventory_snapshot||[]).filter(i=>i.qty>0).map(i=><div key={i.symbol} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"3px 0",color:C.muted}}><span style={{color:COIN_C[i.symbol]||C.text,fontFamily:"monospace"}}>{i.symbol}</span><span>{fmtQ(i.qty,i.symbol)} - CPP {fmt(i.avg)} - {fmt(i.inv)}</span></div>)}</div>}
+        {[["Período",`${detail.period_start} → ${detail.period_end}`],["Ventas",fmt(detail.sales_total)],["Compras",fmt(detail.purchases_total)],["Utilidad Bruta",fmt(detail.gross_profit)],["Gastos",fmt(detail.expenses_total)],["Utilidad Neta",fmt(detail.net_profit)],["Caja",fmt(detail.cash_balance)],["Inventario",fmt(detail.inventory_value)]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,padding:"6px 0",fontSize:12}}><span style={{color:C.muted}}>{l}</span><b>{v}</b></div>)}
+        {detail.inventory_snapshot&&<div><h4 style={{margin:"8px 0",fontSize:12}}>Inventario al cierre</h4>{(detail.inventory_snapshot||[]).filter(i=>i.qty>0).map(i=><div key={i.symbol} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"3px 0",color:C.muted}}><span style={{color:COIN_C[i.symbol]||C.text,fontFamily:"monospace"}}>{i.symbol}</span><span>{fmtQ(i.qty,i.symbol)} · CPP {fmt(i.avg)} · {fmt(i.inv)}</span></div>)}</div>}
       </div>
     </Modal>}
   </div>;
 }
 
-//  NAV + APP ROOT 
+// ─── NAV + APP ROOT ───────────────────────────────────────────────────────
 const NAV=[
-  {id:"dash",icon:"",label:"Dashboard",g:"Principal"},
-  {id:"buy",icon:"",label:"Compras",g:"Operaciones"},
-  {id:"sell",icon:"",label:"Ventas",g:"Operaciones"},
-  {id:"inv",icon:"",label:"Inventario",g:"Operaciones"},
-  {id:"clients",icon:"",label:"Clientes",g:"Clientes"},
-  {id:"cartera",icon:"",label:"Cartera",g:"Clientes"},
-  {id:"suppliers",icon:"",label:"Proveedores",g:"Clientes"},
-  {id:"treasury",icon:"",label:"Tesoreria",g:"Finanzas"},
-  {id:"cash",icon:"",label:"Flujo de Caja",g:"Finanzas"},
-  {id:"exp",icon:"",label:"Gastos",g:"Finanzas"},
-  {id:"profit",icon:"",label:"Rentabilidad",g:"Finanzas"},
-  {id:"goals",icon:"",label:"Metas",g:"Gestion"},
-  {id:"closings",icon:"",label:"Cierres",g:"Gestion"},
+  {id:"dash",icon:"📊",label:"Dashboard",g:"Principal"},
+  {id:"buy",icon:"⬇️",label:"Compras",g:"Operaciones"},
+  {id:"sell",icon:"⬆️",label:"Ventas",g:"Operaciones"},
+  {id:"inv",icon:"₿",label:"Inventario",g:"Operaciones"},
+  {id:"clients",icon:"👥",label:"Clientes",g:"Clientes"},
+  {id:"cartera",icon:"📋",label:"Cartera",g:"Clientes"},
+  {id:"suppliers",icon:"🏦",label:"Proveedores",g:"Clientes"},
+  {id:"treasury",icon:"🏧",label:"Tesorería",g:"Finanzas"},
+  {id:"cash",icon:"💳",label:"Flujo de Caja",g:"Finanzas"},
+  {id:"exp",icon:"💸",label:"Gastos",g:"Finanzas"},
+  {id:"profit",icon:"💹",label:"Rentabilidad",g:"Finanzas"},
+  {id:"goals",icon:"🎯",label:"Metas",g:"Gestión"},
+  {id:"closings",icon:"🔒",label:"Cierres",g:"Gestión"},
 ];
-const GROUPS=["Principal","Operaciones","Clientes","Finanzas","Gestion"];
+const GROUPS=["Principal","Operaciones","Clientes","Finanzas","Gestión"];
 
 function App(){
   const[user,setUser]=useState(null);const[checking,setChecking]=useState(true);const[active,setActive]=useState("dash");
@@ -1639,7 +1652,7 @@ function App(){
     <nav style={{width:SW,background:C.panel,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",position:"fixed",top:0,bottom:0,left:0,zIndex:50,transform:isMob?`translateX(${sidebar?0:-SW}px)`:"none",transition:"transform .22s"}}>
       <div style={{padding:"16px 13px 11px",borderBottom:`1px solid ${C.border}`}}>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
-          <span style={{fontSize:24,filter:"drop-shadow(0 0 8px rgba(38,161,123,.5))"}}></span>
+          <span style={{fontSize:24,filter:"drop-shadow(0 0 8px rgba(38,161,123,.5))"}}>₿</span>
           <div>
             <div style={{fontSize:12,fontWeight:800,background:"linear-gradient(135deg,#26A17B,#2DC48A)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Casa de Cambio <span style={{fontSize:8,background:"none",WebkitTextFillColor:C.accentL}}>PRO 3.0</span></div>
             <div style={{fontSize:10,color:C.muted}}>{user.name||user.email}</div>
@@ -1655,17 +1668,17 @@ function App(){
         </div>)}
       </div>
       <div style={{padding:"9px 13px",borderTop:`1px solid ${C.border}`}}>
-        <div style={{fontSize:10,color:C.muted,marginBottom:6}}> {user.role==="admin"?"Administrador":"Empleado"}</div>
-        <button onClick={async()=>{await api.logout();setUser(null);}} style={{width:"100%",padding:"6px",background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:7,cursor:"pointer",fontSize:11,textAlign:"center"}}>Cerrar sesion</button>
+        <div style={{fontSize:10,color:C.muted,marginBottom:6}}>👤 {user.role==="admin"?"Administrador":"Empleado"}</div>
+        <button onClick={async()=>{await api.logout();setUser(null);}} style={{width:"100%",padding:"6px",background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:7,cursor:"pointer",fontSize:11,textAlign:"center"}}>Cerrar sesión</button>
       </div>
     </nav>
 
     <div style={{marginLeft:isMob?0:SW,flex:1,display:"flex",flexDirection:"column",minHeight:"100vh"}}>
       <header style={{background:C.panel,borderBottom:`1px solid ${C.border}`,padding:"0 14px",height:46,display:"flex",alignItems:"center",gap:9,position:"sticky",top:0,zIndex:30}}>
-        {isMob&&<button onClick={()=>setSidebar(s=>!s)} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer",padding:3}}></button>}
+        {isMob&&<button onClick={()=>setSidebar(s=>!s)} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer",padding:3}}>☰</button>}
         <span style={{fontSize:14}}>{nav.icon}</span>
         <h2 style={{margin:0,fontSize:14,fontWeight:700,flex:1}}>{nav.label}</h2>
-        <button onClick={async()=>{setLoading(true);try{await reload();toast("Actualizado");}catch(e){toast(e.message,"error");}setLoading(false);}} style={{background:"none",border:`1px solid ${C.border}`,color:C.muted,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11}} title="Actualizar datos"></button>
+        <button onClick={async()=>{setLoading(true);try{await reload();toast("Actualizado");}catch(e){toast(e.message,"error");}setLoading(false);}} style={{background:"none",border:`1px solid ${C.border}`,color:C.muted,borderRadius:7,padding:"4px 9px",cursor:"pointer",fontSize:11}} title="Actualizar datos">🔄</button>
         <div style={{fontSize:10,color:C.muted}}>{new Date().toLocaleDateString("es-CO",{day:"numeric",month:"short",year:"numeric"})}</div>
       </header>
       <main style={{flex:1,padding:"14px 12px 40px",maxWidth:1400,width:"100%",margin:"0 auto"}}>
@@ -1677,26 +1690,9 @@ function App(){
   </div>;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+try{ReactDOM.createRoot(document.getElementById("root")).render(<App/>);}catch(e){showErr(e.message+"\n\n"+(e.stack||""));}
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
