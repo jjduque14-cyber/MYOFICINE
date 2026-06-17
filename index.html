@@ -16,7 +16,7 @@ const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -49,19 +49,12 @@ input[type=file]{color:var(--muted);font-size:12px}
 <body>
 <div id="root"></div>
 <script>
-function showErr(msg){
-  document.getElementById("root").innerHTML =
-    '<div style="background:#1a0e0e;color:#ff8080;font-family:monospace;font-size:13px;padding:20px;white-space:pre-wrap;min-height:100vh;">ERROR DETECTADO:\n\n' +
-    String(msg).replace(/</g,"&lt;") + '</div>';
-}
-window.addEventListener("error", function(e){
-  showErr((e.message||"error")+"\n\nArchivo: "+(e.filename||"?")+"\nLinea: "+(e.lineno||"?")+" Col: "+(e.colno||"?")+(e.error&&e.error.stack?"\n\n"+e.error.stack:""));
-});
-window.addEventListener("unhandledrejection", function(e){
-  showErr("Promise rechazada: "+(e.reason&&e.reason.message?e.reason.message:e.reason));
+window.addEventListener("error",function(e){
+  if(document.getElementById("root").innerHTML.trim()==="")
+    document.getElementById("root").innerHTML='<div style="background:#1a0e0e;color:#ff8080;font-family:monospace;font-size:13px;padding:20px;white-space:pre-wrap;">Error: '+String(e.message).replace(/</g,"&lt;")+'\nLinea '+e.lineno+' Col '+e.colno+'</div>';
 });
 </script>
-<script type="text/plain" id="app-source" data-presets="react">
+<script type="text/plain" id="app-source">
 const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let UID=null;
@@ -735,12 +728,18 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
-          <Sel label="Moneda" value={form.symbol} onChange={f("symbol")} options={COINS.map(c=>({value:c,label:c}))}/>
+          {editRow?<div style={{display:"flex",flexDirection:"column",gap:3}}><label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>Moneda</label><div style={{padding:"8px 10px",background:C.card2,borderRadius:7,fontSize:13,color:C.muted,fontFamily:"monospace"}}>{form.symbol}</div></div>:<Sel label="Moneda" value={form.symbol} onChange={f("symbol")} options={COINS.map(c=>({value:c,label:c}))}/>}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <Inp label="Cantidad" type="number" value={form.quantity} onChange={f("quantity")} placeholder="Ej: 30000"/>
-          <Inp label="Precio unit. COP" type="number" value={form.unit_cost} onChange={f("unit_cost")} placeholder="Ej: 3500"/>
+          {editRow?<>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}><label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>Cantidad</label><div style={{padding:"8px 10px",background:C.card2,borderRadius:7,fontSize:13,color:C.muted,fontFamily:"monospace"}}>{fmtQ(form.quantity,form.symbol)}</div></div>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}><label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>Precio unit. COP</label><div style={{padding:"8px 10px",background:C.card2,borderRadius:7,fontSize:13,color:C.muted,fontFamily:"monospace"}}>{fmt(form.unit_cost)}</div></div>
+          </>:<>
+            <Inp label="Cantidad" type="number" value={form.quantity} onChange={f("quantity")} placeholder="Ej: 30000"/>
+            <Inp label="Precio unit. COP" type="number" value={form.unit_cost} onChange={f("unit_cost")} placeholder="Ej: 3500"/>
+          </>}
         </div>
+        {editRow&&<div style={{fontSize:11,color:C.amber,background:"#1f1a0a",border:`1px solid ${C.amber}`,borderRadius:7,padding:"7px 10px"}}>Cantidad y precio no se pueden editar aquí porque ya afectaron el inventario y el promedio. Para corregir, anula esta compra y regístrala de nuevo.</div>}
         {form.quantity&&form.unit_cost&&<div style={{background:C.panel,borderRadius:7,padding:10,display:"flex",gap:12,flexWrap:"wrap"}}>
           <span style={{fontSize:12,color:C.muted}}>Total: <b style={{color:C.amber}}>{fmt(+form.quantity*+form.unit_cost)}</b></span>
           {curInv&&+curInv.quantity>0&&<span style={{fontSize:12,color:C.muted}}>Nuevo CPP: <b style={{color:C.text}}>{fmt((+curInv.quantity*+curInv.avg_cost+ +form.quantity*+form.unit_cost)/(+curInv.quantity+ +form.quantity))}</b></span>}
@@ -826,16 +825,22 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Inp label="Fecha" type="date" value={form.date} onChange={f("date")}/>
-          <Sel label="Moneda" value={form.symbol} onChange={f("symbol")} options={inventory.filter(i=>+i.quantity>0).length>0?inventory.filter(i=>+i.quantity>0).map(i=>({value:i.symbol,label:`${i.symbol} · ${fmtQ(i.quantity,i.symbol)}`})):[{value:"USDT",label:"USDT (sin stock)"}]}/>
+          {editRow?<div style={{display:"flex",flexDirection:"column",gap:3}}><label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>Moneda</label><div style={{padding:"8px 10px",background:C.card2,borderRadius:7,fontSize:13,color:C.muted,fontFamily:"monospace"}}>{form.symbol}</div></div>:<Sel label="Moneda" value={form.symbol} onChange={f("symbol")} options={inventory.filter(i=>+i.quantity>0).length>0?inventory.filter(i=>+i.quantity>0).map(i=>({value:i.symbol,label:`${i.symbol} · ${fmtQ(i.quantity,i.symbol)}`})):[{value:"USDT",label:"USDT (sin stock)"}]}/>}
         </div>
         {curInv&&<div style={{background:C.panel,borderRadius:7,padding:8,display:"flex",gap:12,flexWrap:"wrap",fontSize:11}}>
           <span style={{color:C.muted}}>Disponible: <b style={{color:COIN_C[form.symbol]}}>{fmtQ(curInv.quantity,form.symbol)}</b></span>
           <span style={{color:C.muted}}>CPP: <b style={{color:C.text}}>{fmt(curInv.avg_cost)}</b></span>
         </div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <Inp label="Cantidad" type="number" value={form.quantity} onChange={f("quantity")} placeholder="Ej: 10000"/>
-          <Inp label="Precio unit. COP" type="number" value={form.unit_price} onChange={f("unit_price")} placeholder="Ej: 3580"/>
+          {editRow?<>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}><label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>Cantidad</label><div style={{padding:"8px 10px",background:C.card2,borderRadius:7,fontSize:13,color:C.muted,fontFamily:"monospace"}}>{fmtQ(form.quantity,form.symbol)}</div></div>
+            <div style={{display:"flex",flexDirection:"column",gap:3}}><label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>Precio unit. COP</label><div style={{padding:"8px 10px",background:C.card2,borderRadius:7,fontSize:13,color:C.muted,fontFamily:"monospace"}}>{fmt(form.unit_price)}</div></div>
+          </>:<>
+            <Inp label="Cantidad" type="number" value={form.quantity} onChange={f("quantity")} placeholder="Ej: 10000"/>
+            <Inp label="Precio unit. COP" type="number" value={form.unit_price} onChange={f("unit_price")} placeholder="Ej: 3580"/>
+          </>}
         </div>
+        {editRow&&<div style={{fontSize:11,color:C.amber,background:"#1f1a0a",border:`1px solid ${C.amber}`,borderRadius:7,padding:"7px 10px"}}>Moneda, cantidad y precio no se pueden editar aquí porque ya afectaron el inventario y la utilidad calculada. Para corregir, anula esta venta y regístrala de nuevo.</div>}
         {estP!==null&&<div style={{background:estP>=0?"#0a1f14":"#2D1218",border:`1px solid ${estP>=0?C.green:C.rose}`,borderRadius:7,padding:10,display:"flex",gap:12,flexWrap:"wrap"}}>
           <span style={{fontSize:12,color:C.muted}}>Ingreso: <b style={{color:C.text}}>{fmt(+form.quantity*+form.unit_price)}</b></span>
           <span style={{fontSize:12,color:C.muted}}>Costo: <b style={{color:C.rose}}>{fmt(+form.quantity*+curInv.avg_cost)}</b></span>
@@ -1690,19 +1695,18 @@ function App(){
   </div>;
 }
 
-try{ReactDOM.createRoot(document.getElementById("root")).render(<App/>);}catch(e){showErr(e.message+"\n\n"+(e.stack||""));}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 <script>
-try{
-  var __src=document.getElementById("app-source").textContent;
-  var __out=Babel.transform(__src,{presets:["react"]});
-  var __s=document.createElement("script");
-  __s.textContent=__out.code;
-  document.body.appendChild(__s);
-}catch(__err){
-  showErr("BABEL PARSE ERROR\n\n"+__err.message+"\n\nLinea: "+(__err.loc?__err.loc.line:"?")+"  Columna: "+(__err.loc?__err.loc.column:"?")+"\n\n"+(__err.codeFrame||""));
-}
+(function(){
+  var src=document.getElementById("app-source").textContent;
+  var out=Babel.transform(src,{presets:[["react",{runtime:"classic"}]]});
+  var s=document.createElement("script");
+  s.textContent=out.code;
+  document.body.appendChild(s);
+})();
 </script>
 </body>
 </html>
+
 
