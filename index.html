@@ -705,11 +705,11 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
 // ─── COMPRAS ──────────────────────────────────────────────────────────────
 function PurchasesModule({purchases,inventory,terceros,reload,toast}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
-  const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
+  const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");const[search,setSearch]=useState("");
   const empty={date:today(),symbol:"USDT",quantity:"",unit_cost:"",supplier:"",pay_method:"transferencia",notes:"",payType:"contado",initial_paid:"",due_date:""};
   const[form,setForm]=useState(empty);const[file,setFile]=useState(null);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const[editRow,setEditRow]=useState(null);const[factura,setFactura]=useState(null);
-  const filtered=purchases.filter(p=>inP(p.date,period,from,to));
+  const filtered=purchases.filter(p=>inP(p.date,period,from,to)&&(!search||norm(p.supplier).includes(norm(search))||p.date.includes(search)||norm(p.symbol).includes(norm(search))||String(p.quantity).includes(search)||String(p.total).includes(search)||String(p.unit_cost).includes(search)));
   const curInv=inventory.find(i=>i.symbol===form.symbol);
   const openEdit=r=>{setEditRow(r);setForm({date:r.date,symbol:r.symbol,quantity:String(r.quantity),unit_cost:String(r.unit_cost),supplier:r.supplier||"",pay_method:r.pay_method||"transferencia",notes:r.notes||"",payType:"contado",initial_paid:"",due_date:r.due_date||"",paid:String(r.paid||0),status:r.status||"pagado"});setModal(true);};
   const del=async r=>{if(!confirm(`¿Anular compra de ${fmtQ(r.quantity,r.symbol)} ${r.symbol}?`))return;try{await api.deletePurchase(r.id);await reload();toast("Compra anulada");}catch(e){toast(e.message,"error");};};
@@ -736,6 +736,10 @@ function PurchasesModule({purchases,inventory,terceros,reload,toast}){
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Compras" sub={`${purchases.length} operaciones`} action="Nueva Compra" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}
       extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","Precio","Total","Pagado","Pendiente","Estado","Vence","Proveedor","Método"],filtered.map(p=>[p.date,p.symbol,p.quantity,p.unit_cost,p.total,p.paid||0,pendOf(p),stOf(p),p.due_date||"",p.supplier||"",p.pay_method||""]),`compras-${today()}.csv`)}>📥 Excel</Btn>}/>
+    <div style={{position:"relative"}}>
+      <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.muted,fontSize:12}}>🔍</span>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por proveedor, fecha, moneda o monto..." style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 11px 8px 30px",color:C.text,fontSize:13,outline:"none",width:"100%"}}/>
+    </div>
     <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
       <Stat small label="Invertido" value={fmtK(filtered.reduce((a,p)=>a+p.total,0))} accent={C.amber}/>
@@ -795,7 +799,7 @@ function PurchasesModule({purchases,inventory,terceros,reload,toast}){
 function SalesModule({sales,inventory,terceros,reload,toast}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
-  const[sym,setSym]=useState("all");
+  const[sym,setSym]=useState("all");const[search,setSearch]=useState("");
   const empty={date:today(),symbol:"USDT",quantity:"",unit_price:"",client:"",pay_method:"transferencia",notes:"",payType:"contado",initial_paid:"",due_date:""};
   const[form,setForm]=useState(empty);const[file,setFile]=useState(null);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const[editRow,setEditRow]=useState(null);const[factura,setFactura]=useState(null);
@@ -803,7 +807,7 @@ function SalesModule({sales,inventory,terceros,reload,toast}){
   const del=async r=>{if(!confirm(`¿Anular venta de ${fmtQ(r.quantity,r.symbol)} ${r.symbol}?`))return;try{await api.deleteSale(r.id);await reload();toast("Venta anulada");}catch(e){toast(e.message,"error");}};
   const curInv=inventory.find(i=>i.symbol===form.symbol);
   const estP=curInv&&form.quantity&&form.unit_price?(+form.quantity*+form.unit_price)-(+form.quantity*+curInv.avg_cost):null;
-  const filtered=sales.filter(s=>inP(s.date,period,from,to)&&(sym==="all"||s.symbol===sym));
+  const filtered=sales.filter(s=>inP(s.date,period,from,to)&&(sym==="all"||s.symbol===sym)&&(!search||norm(s.client).includes(norm(search))||s.date.includes(search)||norm(s.symbol).includes(norm(search))||String(s.quantity).includes(search)||String(s.total).includes(search)||String(s.unit_price).includes(search)));
   const rev=filtered.reduce((a,s)=>a+s.total,0),gp=filtered.reduce((a,s)=>a+(+s.gross_profit||0),0);
   const save=async()=>{
     if(editRow){
@@ -831,6 +835,10 @@ function SalesModule({sales,inventory,terceros,reload,toast}){
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Ventas" sub={`${sales.length} operaciones`} action="Nueva Venta" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}
       extra={<Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Moneda","Cantidad","P.Venta","CPP","Ingreso","Costo","Utilidad","Pagado","Pendiente","Estado","Vence","Cliente","Método"],filtered.map(s=>[s.date,s.symbol,s.quantity,s.unit_price,s.avg_cost_used,s.total,s.cogs,s.gross_profit,s.paid||0,pendOf(s),stOf(s),s.due_date||"",s.client||"",s.pay_method||""]),`ventas-${today()}.csv`)}>📥 Excel</Btn>}/>
+    <div style={{position:"relative"}}>
+      <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.muted,fontSize:12}}>🔍</span>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por cliente, fecha, moneda o monto..." style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 11px 8px 30px",color:C.text,fontSize:13,outline:"none",width:"100%"}}/>
+    </div>
     <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
       {["all",...new Set(sales.map(s=>s.symbol))].map(s=><Pill key={s} label={s==="all"?"Todas":s} active={sym===s} onClick={()=>setSym(s)}/>)}
@@ -1757,4 +1765,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
