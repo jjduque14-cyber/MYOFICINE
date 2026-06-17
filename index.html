@@ -104,65 +104,32 @@ const api={
   async session(){const{data}=await sb.auth.getSession();if(!data?.session)return null;UID=data.session.user.id;const{data:p}=await sb.from("profiles").select("*").eq("id",UID).maybeSingle();return{...data.session.user,...(p||{})};},
   async login(email,pass){const{data,error}=await sb.auth.signInWithPassword({email,password:pass});if(error)throw error;UID=data.user.id;const{data:p}=await sb.from("profiles").select("*").eq("id",UID).maybeSingle();return{...data.user,...(p||{})};},
   async logout(){await sb.auth.signOut();UID=null;},
-  async getClients(){const{data,error}=await sb.from("clients").select("*").is("deleted_at",null).order("name");if(error)throw error;return data||[];},
-  async addClient(c){const{data,error}=await sb.from("clients").insert({...c,user_id:UID}).select().single();if(error)throw error;return data;},
-  async updateClient(id,c){const{data,error}=await sb.from("clients").update(c).eq("id",id).select().single();if(error)throw error;return data;},
-  async deleteClient(id){const{error}=await sb.from("clients").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
-  async updateSupplier(id,s){const{data,error}=await sb.from("suppliers").update(s).eq("id",id).select().single();if(error)throw error;return data;},
-  async deleteSupplier(id){const{error}=await sb.from("suppliers").delete().eq("id",id);if(error)throw error;},
+  async getTerceros(){const{data,error}=await sb.from("terceros").select("*").is("deleted_at",null).order("name");if(error)throw error;return data||[];},
+  async addTercero(t){const{data,error}=await sb.from("terceros").insert({...t,user_id:UID}).select().single();if(error)throw error;return data;},
+  async updateTercero(id,t){const{data,error}=await sb.from("terceros").update(t).eq("id",id).select().single();if(error)throw error;return data;},
+  async deleteTercero(id){const{error}=await sb.from("terceros").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
   async updatePurchase(id,p){const{data,error}=await sb.from("crypto_purchases").update({date:p.date,symbol:p.symbol,quantity:+p.quantity,unit_cost:+p.unit_cost,total:+p.quantity*+p.unit_cost,supplier:p.supplier,pay_method:p.pay_method,notes:p.notes,due_date:p.due_date||null,paid:+p.paid||0,status:p.status}).eq("id",id).select().single();if(error)throw error;return data;},
   async deletePurchase(id){
-    // 1. Get purchase data before deleting
     const{data:p,error:pe}=await sb.from("crypto_purchases").select("*").eq("id",id).single();
     if(pe)throw pe;
-    // 2. Soft delete the purchase
-    const{error}=await sb.from("crypto_purchases").update({deleted_at:new Date().toISOString()}).eq("id",id);
-    if(error)throw error;
-    // 3. Revert inventory - subtract the quantity that was added
-    const{data:inv}=await sb.from("crypto_inventory").select("*").eq("user_id",UID).eq("symbol",p.symbol).single();
-    if(inv){
-      const newQty=Math.max(0,+inv.quantity - +p.quantity);
-      const newInvested=newQty * +inv.avg_cost;
-      if(newQty<=0){
-        await sb.from("crypto_inventory").delete().eq("user_id",UID).eq("symbol",p.symbol);
-      } else {
-        await sb.from("crypto_inventory").update({quantity:newQty,total_invested:newInvested,updated_at:new Date().toISOString()}).eq("user_id",UID).eq("symbol",p.symbol);
-      }
-    }
-    // 4. Delete kardex entry for this purchase
+    const{error}=await sb.rpc("revert_crypto_purchase",{p_purchase_id:id});
+    if(error)throw new Error(error.message.replace(/^.*?:\s*/,""));
     await sb.from("crypto_kardex").delete().eq("reference_id",id);
-    // 5. Reverse cash_flow entry if paid
     if(+p.paid>0){
       await sb.from("cash_flow").delete().eq("user_id",UID).eq("type","egreso").filter("description","ilike",`%${p.symbol}%`).filter("amount","eq",p.paid);
     }
   },
   async updateSale(id,s){const{data,error}=await sb.from("crypto_sales").update({date:s.date,symbol:s.symbol,quantity:+s.quantity,unit_price:+s.unit_price,total:+s.quantity*+s.unit_price,client:s.client,pay_method:s.pay_method,notes:s.notes,due_date:s.due_date||null,paid:+s.paid||0,status:s.status}).eq("id",id).select().single();if(error)throw error;return data;},
   async deleteSale(id){
-    // 1. Get sale data before deleting
-    const{data:s,error:se}=await sb.from("crypto_sales").select("*").eq("id",id).single();
-    if(se)throw se;
-    // 2. Soft delete the sale
-    const{error}=await sb.from("crypto_sales").update({deleted_at:new Date().toISOString()}).eq("id",id);
-    if(error)throw error;
-    // 3. Revert inventory - add back the quantity that was sold
-    const{data:inv}=await sb.from("crypto_inventory").select("*").eq("user_id",UID).eq("symbol",s.symbol).single();
-    if(inv){
-      const newQty=+inv.quantity + +s.quantity;
-      const newInvested=newQty * +inv.avg_cost;
-      await sb.from("crypto_inventory").update({quantity:newQty,total_invested:newInvested,updated_at:new Date().toISOString()}).eq("user_id",UID).eq("symbol",s.symbol);
-    } else {
-      // Re-create inventory entry using avg_cost_used from sale
-      await sb.from("crypto_inventory").insert({user_id:UID,symbol:s.symbol,quantity:+s.quantity,avg_cost:+s.avg_cost_used||0,total_invested:(+s.quantity)*(+s.avg_cost_used||0),updated_at:new Date().toISOString()});
-    }
-    // 4. Delete kardex entry for this sale
+    const{error}=await sb.rpc("revert_crypto_sale",{p_sale_id:id});
+    if(error)throw new Error(error.message.replace(/^.*?:\s*/,""));
     await sb.from("crypto_kardex").delete().eq("reference_id",id);
   },
   async updatePayment(id,p){const{data,error}=await sb.from("crypto_payments").update({date:p.date,party:p.party,direction:p.direction,amount:+p.amount,method:p.method,notes:p.notes}).eq("id",id).select().single();if(error)throw error;return data;},
   async deletePayment(id){const{error}=await sb.from("crypto_payments").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
   async updateExpense(id,e){const{data,error}=await sb.from("expenses").update({date:e.date,category:e.category,description:e.description,amount:+e.amount}).eq("id",id).select().single();if(error)throw error;return data;},
   async updateCashFlow(id,e){const{data,error}=await sb.from("cash_flow").update({date:e.date,type:e.type,description:e.description,amount:+e.amount,method:e.method}).eq("id",id).select().single();if(error)throw error;return data;},
-  async getSuppliers(){const{data,error}=await sb.from("suppliers").select("*").order("name");if(error)throw error;return data||[];},
-  async addSupplier(s){const{data,error}=await sb.from("suppliers").insert({...s,user_id:UID}).select().single();if(error)throw error;return data;},
+  async getPurchaseLots(){const{data,error}=await sb.from("crypto_purchase_lots_view").select("*");if(error)throw error;return data||[];},
   async getInventory(){const{data,error}=await sb.from("crypto_inventory_view").select("*");if(error)throw error;return data||[];},
   async getKardex(){const{data,error}=await sb.from("crypto_kardex").select("*").order("created_at",{ascending:false});if(error)throw error;return data||[];},
   async getPurchases(){const{data,error}=await sb.from("crypto_purchases").select("*").is("deleted_at",null).order("date",{ascending:false}).order("created_at",{ascending:false});if(error)throw error;return data||[];},
@@ -540,7 +507,7 @@ function PaymentModal({ctx,onClose,reload,toast}){
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────
-function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,expenses,setActive}){
+function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,setActive}){
   const[rank,setRank]=useState("profit");
 
   const capital=cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0);
@@ -616,7 +583,7 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
       <Stat label="Valor Inventario" value={fmtK(totalInv)} accent={C.amber} sub="COP invertidos"/>
       <Stat label="Por Cobrar" value={fmtK(porCobrar)} accent={porCobrar>0?C.amber:C.muted} sub={`${sales.filter(s=>pendOf(s)>0.01).length} cuentas`} onClick={()=>setActive("cartera")}/>
       <Stat label="Por Pagar" value={fmtK(porPagar)} accent={porPagar>0?C.rose:C.muted} sub={`${purchases.filter(p=>pendOf(p)>0.01).length} cuentas`} onClick={()=>setActive("cartera")}/>
-      <Stat label="Clientes Activos" value={activos.size} sub="últimos 30 días" onClick={()=>setActive("clients")}/>
+      <Stat label="Clientes Activos" value={activos.size} sub="últimos 30 días" onClick={()=>setActive("terceros")}/>
     </div>
 
     {/* Utilidades */}
@@ -685,7 +652,7 @@ function Dashboard({inventory,sales,purchases,cashflow,clients,payments,goals,ex
 }
 
 // ─── COMPRAS ──────────────────────────────────────────────────────────────
-function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
+function PurchasesModule({purchases,inventory,terceros,reload,toast}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
   const empty={date:today(),symbol:"USDT",quantity:"",unit_cost:"",supplier:"",pay_method:"transferencia",notes:"",payType:"contado",initial_paid:"",due_date:""};
@@ -746,7 +713,7 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
         </div>}
         <Inp label="Proveedor" value={form.supplier} onChange={f("supplier")} list="sup-dl" placeholder="Nombre o alias"/>
         <datalist id="sup-dl">
-          {[...suppliers.map(s=>s.name),...clients.map(c=>c.name)].filter((v,i,a)=>a.indexOf(v)===i).sort().map((name,i)=><option key={i} value={name}/>)}
+          {terceros.map(t=>t.name).sort().map((name,i)=><option key={i} value={name}/>)}
         </datalist>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Sel label="Forma pago" value={form.payType} onChange={f("payType")} options={[{value:"contado",label:"💵 Contado"},{value:"credito",label:"📅 Crédito"}]}/>
@@ -772,7 +739,7 @@ function PurchasesModule({purchases,inventory,suppliers,clients,reload,toast}){
 }
 
 // ─── VENTAS ───────────────────────────────────────────────────────────────
-function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
+function SalesModule({sales,inventory,terceros,reload,toast}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
   const[sym,setSym]=useState("all");
@@ -848,7 +815,7 @@ function SalesModule({sales,inventory,clients,suppliers,reload,toast}){
         </div>}
         <Inp label="Cliente" value={form.client} onChange={f("client")} list="cli-dl" placeholder="Nombre o alias"/>
         <datalist id="cli-dl">
-          {[...clients.map(c=>c.name),...suppliers.map(s=>s.name)].filter((v,i,a)=>a.indexOf(v)===i).sort().map((name,i)=><option key={i} value={name}/>)}
+          {terceros.map(t=>t.name).sort().map((name,i)=><option key={i} value={name}/>)}
         </datalist>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <Sel label="Forma pago" value={form.payType} onChange={f("payType")} options={[{value:"contado",label:"💵 Contado"},{value:"credito",label:"📅 Crédito"}]}/>
@@ -921,11 +888,12 @@ function CarteraModule({sales,purchases,payments,reload,toast}){
 }
 
 // ─── INVENTARIO ───────────────────────────────────────────────────────────
-function InventoryModule({inventory,kardex}){
+function InventoryModule({inventory,kardex,purchaseLots}){
   const[tab,setTab]=useState("pos");const[sym,setSym]=useState("all");
   const totInv=inventory.reduce((a,i)=>a+(+i.total_invested||0),0);
   const totP=inventory.reduce((a,i)=>a+(+i.accumulated_profit||0),0);
   const fk=sym==="all"?kardex:kardex.filter(k=>k.symbol===sym);
+  const fl=sym==="all"?purchaseLots:purchaseLots.filter(l=>l.symbol===sym);
   const pCols=[
     {key:"symbol",label:"Moneda",render:v=><div style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:COIN_C[v]||C.accent}}/><b style={{fontFamily:"monospace"}}>{v}</b></div>},
     {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace",color:+v>0?C.text:C.muted}}>{fmtQ(v,r.symbol)}</span>},
@@ -943,8 +911,15 @@ function InventoryModule({inventory,kardex}){
     {key:"balance_qty",label:"Saldo",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
     {key:"balance_avg",label:"CPP Saldo",render:v=>fmt(v)},
   ];
+  const lCols=[
+    {key:"date",label:"Fecha compra"},{key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
+    {key:"remaining_qty",label:"Disponible",render:(v,r)=><span style={{fontFamily:"monospace",color:C.text}}>{fmtQ(v,r.symbol)}</span>},
+    {key:"unit_cost",label:"Precio compra",render:v=>fmt(v)},
+    {key:"remaining_value",label:"Valor del lote",render:v=><b style={{color:C.amber}}>{fmt(v)}</b>},
+    {key:"supplier",label:"Proveedor",render:v=>v||"—"},
+  ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Inventario" extra={<Btn small variant="sec" onClick={()=>tab==="pos"?exportCSV(["Moneda","Cantidad","CPP","Invertido","Utilidad","ROI%"],inventory.map(i=>[i.symbol,i.quantity,i.avg_cost,i.total_invested,i.accumulated_profit,i.roi_pct]),`inventario-${today()}.csv`):exportCSV(["Fecha","Moneda","Tipo","Cantidad","Precio","Total","Saldo","CPP"],fk.map(k=>[k.date,k.symbol,k.type,k.quantity,k.unit_cost,k.total,k.balance_qty,k.balance_avg]),`kardex-${today()}.csv`)}>📥 Excel</Btn>}/>
+    <Head title="Inventario" extra={<Btn small variant="sec" onClick={()=>tab==="pos"?exportCSV(["Moneda","Cantidad","CPP","Invertido","Utilidad","ROI%"],inventory.map(i=>[i.symbol,i.quantity,i.avg_cost,i.total_invested,i.accumulated_profit,i.roi_pct]),`inventario-${today()}.csv`):tab==="kdx"?exportCSV(["Fecha","Moneda","Tipo","Cantidad","Precio","Total","Saldo","CPP"],fk.map(k=>[k.date,k.symbol,k.type,k.quantity,k.unit_cost,k.total,k.balance_qty,k.balance_avg]),`kardex-${today()}.csv`):exportCSV(["Fecha","Moneda","Disponible","Precio","Valor","Proveedor"],fl.map(l=>[l.date,l.symbol,l.remaining_qty,l.unit_cost,l.remaining_value,l.supplier||""]),`lotes-${today()}.csv`)}>📥 Excel</Btn>}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
       <Stat small label="Capital en posición" value={fmtK(totInv)} accent={C.amber}/>
       <Stat small label="Utilidad acumulada" value={fmtK(totP)} accent={C.green}/>
@@ -952,10 +927,13 @@ function InventoryModule({inventory,kardex}){
       <Stat small label="Monedas activas" value={inventory.filter(i=>+i.quantity>0).length}/>
     </div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"space-between"}}>
-      <div style={{display:"flex",gap:5}}><Pill label="📦 Posición" active={tab==="pos"} onClick={()=>setTab("pos")}/><Pill label="📋 Kardex" active={tab==="kdx"} onClick={()=>setTab("kdx")}/></div>
+      <div style={{display:"flex",gap:5}}><Pill label="📦 Posición" active={tab==="pos"} onClick={()=>setTab("pos")}/><Pill label="📋 Kardex" active={tab==="kdx"} onClick={()=>setTab("kdx")}/><Pill label="🧮 Lotes" active={tab==="lotes"} onClick={()=>setTab("lotes")}/></div>
     </div>
-    {tab==="kdx"&&<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{["all",...new Set(kardex.map(k=>k.symbol))].map(s=><Pill key={s} label={s==="all"?"Todas":s} active={sym===s} onClick={()=>setSym(s)}/>)}</div>}
-    {tab==="pos"?<Tabla cols={pCols} rows={inventory} emptyMsg="Sin posiciones"/>:<Tabla cols={kCols} rows={fk} emptyMsg="Sin movimientos"/>}
+    {(tab==="kdx"||tab==="lotes")&&<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{["all",...new Set((tab==="kdx"?kardex:purchaseLots).map(k=>k.symbol))].map(s=><Pill key={s} label={s==="all"?"Todas":s} active={sym===s} onClick={()=>setSym(s)}/>)}</div>}
+    {tab==="lotes"&&sym!=="all"&&<div style={{fontSize:11,color:C.muted}}>Promedio actual de {sym} (solo inventario disponible): <b style={{color:C.accentL}}>{fmt(inventory.find(i=>i.symbol===sym)?.avg_cost||0)}</b> · {fl.length} lote{fl.length!==1?"s":""} activo{fl.length!==1?"s":""}</div>}
+    {tab==="pos"?<Tabla cols={pCols} rows={inventory} emptyMsg="Sin posiciones"/>
+      :tab==="kdx"?<Tabla cols={kCols} rows={fk} emptyMsg="Sin movimientos"/>
+      :<Tabla cols={lCols} rows={fl} emptyMsg="Sin lotes disponibles"/>}
   </div>;
 }
 
@@ -1058,60 +1036,60 @@ function TreasuryModule({reload,toast}){
   </div>;
 }
 
-// ─── CLIENTES ─────────────────────────────────────────────────────────────
-function ClientFormModal({client,onClose,reload,toast}){
-  const[form,setForm]=useState(client?{name:client.name||"",document:client.document||"",phone:client.phone||"",email:client.email||"",city:client.city||"",address:client.address||"",notes:client.notes||"",status:client.status||"activo",tags:client.tags||[]}:{name:"",document:"",phone:"",email:"",city:"",address:"",notes:"",status:"activo",tags:[]});
+// ─── TERCEROS ─────────────────────────────────────────────────────────────
+function TerceroFormModal({tercero,onClose,reload,toast}){
+  const[form,setForm]=useState(tercero?{name:tercero.name||"",tipo:tercero.tipo||"cliente",document:tercero.document||"",phone:tercero.phone||"",email:tercero.email||"",city:tercero.city||"",address:tercero.address||"",notes:tercero.notes||"",status:tercero.status||"activo",tags:tercero.tags||[]}:{name:"",tipo:"cliente",document:"",phone:"",email:"",city:"",address:"",notes:"",status:"activo",tags:[]});
   const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const toggleTag=t=>setForm(p=>({...p,tags:p.tags.includes(t)?p.tags.filter(x=>x!==t):[...p.tags,t]}));
   const save=async()=>{
     if(!form.name){toast("Nombre requerido","error");return;}
-    try{if(client)await api.updateClient(client.id,form);else await api.addClient(form);await reload();onClose();toast(client?"Cliente actualizado":"Cliente creado");}
+    try{if(tercero)await api.updateTercero(tercero.id,form);else await api.addTercero(form);await reload();onClose();toast(tercero?"Tercero actualizado":"Tercero creado");}
     catch(e){toast(e.message,"error");}
   };
-  return <Modal title={client?"Editar Cliente":"Nuevo Cliente"} onClose={onClose}>
+  return <Modal title={tercero?"Editar Tercero":"Nuevo Tercero"} onClose={onClose}>
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Inp label="Nombre / alias" value={form.name} onChange={f("name")}/>
+        <Sel label="Rol" value={form.tipo} onChange={f("tipo")} options={[{value:"cliente",label:"🔵 Cliente"},{value:"proveedor",label:"🟠 Proveedor"},{value:"ambos",label:"🟣 Cliente + Proveedor"}]}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Inp label="Documento" value={form.document} onChange={f("document")} placeholder="CC/NIT"/>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
         <Inp label="Teléfono" value={form.phone} onChange={f("phone")}/>
-        <Inp label="Correo" value={form.email} onChange={f("email")}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <Inp label="Correo" value={form.email} onChange={f("email")}/>
         <Inp label="Ciudad" value={form.city} onChange={f("city")}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <Inp label="Dirección" value={form.address} onChange={f("address")}/>
         <Sel label="Estado" value={form.status} onChange={f("status")} options={[{value:"activo",label:"🟢 Activo"},{value:"inactivo",label:"⚪ Inactivo"}]}/>
       </div>
-      <Inp label="Dirección" value={form.address} onChange={f("address")}/>
       <div style={{display:"flex",flexDirection:"column",gap:4}}>
         <label style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase"}}>Etiquetas</label>
         <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{TAGS.map(t=><Pill key={t} label={t} active={form.tags.includes(t)} onClick={()=>toggleTag(t)} color={TAG_C[t]}/>)}</div>
       </div>
       <Inp label="Observaciones" value={form.notes} onChange={f("notes")} rows={2}/>
-      <Btn onClick={save} full>{client?"Guardar Cambios":"Crear Cliente"}</Btn>
+      <Btn onClick={save} full>{tercero?"Guardar Cambios":"Crear Tercero"}</Btn>
     </div>
   </Modal>;
 }
 
-function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toast}){
+function TerceroFicha({tercero,sales,purchases,payments,onClose,onEdit,reload,toast}){
   const[tab,setTab]=useState("resumen");
   const[period,setPeriod]=useState("all");const[from,setFrom]=useState("");const[to,setTo]=useState("");
   const[printing,setPrinting]=useState(false);const[payCtx,setPayCtx]=useState(null);
 
-  const st=useMemo(()=>clientStats(client,sales,purchases,payments),[client,sales,purchases,payments]);
+  const st=useMemo(()=>clientStats(tercero,sales,purchases,payments),[tercero,sales,purchases,payments]);
   const ledger=st.ledger.filter(r=>inP(r.date,period,from,to));
   const ops=[...st.vs.map(s=>({...s,_t:"venta"})),...st.cs.map(p=>({...p,_t:"compra"}))]
     .filter(o=>inP(o.date,period,from,to)).sort((a,b)=>b.date.localeCompare(a.date));
 
-  // Actividad 12 meses
   const mos=[...Array(12)].map((_,i)=>{const d=new Date();d.setMonth(d.getMonth()-(11-i));return d.toISOString().slice(0,7);});
   const activity=mos.map(m=>[...st.vs,...st.cs].filter(o=>o.date.slice(0,7)===m).reduce((a,o)=>a+o.total,0)/1e6);
   const mLbls=mos.map(m=>["E","F","M","A","M","J","J","A","S","O","N","D"][+m.slice(5,7)-1]);
-
-  // Utilidad por mes para la ficha de rentabilidad
   const profByMo=mos.map(m=>st.vs.filter(s=>s.date.slice(0,7)===m).reduce((a,s)=>a+(+s.gross_profit||0),0));
 
-  const exportExtracto=()=>exportCSV(["Fecha","Documento","Concepto","Débito","Crédito","Saldo"],ledger.map(r=>[r.date,r.doc||"",r.concept,r.debit||"",r.credit||"",r.saldo]),`extracto-${client.name.replace(/\s+/g,"-")}-${today()}.csv`);
+  const exportExtracto=()=>exportCSV(["Fecha","Documento","Concepto","Débito","Crédito","Saldo"],ledger.map(r=>[r.date,r.doc||"",r.concept,r.debit||"",r.credit||"",r.saldo]),`extracto-${tercero.name.replace(/\s+/g,"-")}-${today()}.csv`);
 
   const ledCols=[
     {key:"date",label:"Fecha"},{key:"doc",label:"Documento",render:v=><span style={{fontFamily:"monospace",fontSize:10,color:C.muted}}>{v||"—"}</span>},
@@ -1128,28 +1106,29 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
     {key:"gross_profit",label:"Utilidad",render:(v,r)=>r._t==="venta"?<b style={{color:(v||0)>=0?C.green:C.rose}}>{fmt(v||0)}</b>:<span style={{color:C.muted}}>—</span>},
     {key:"st",label:"Estado",render:(_,r)=><Badge label={stOf(r)} color={ST_C[stOf(r)]}/>},
   ];
+  const tipoLabel=tercero.tipo==="ambos"?"Cliente + Proveedor":tercero.tipo==="proveedor"?"Proveedor":"Cliente";
+  const tipoColor=tercero.tipo==="ambos"?C.purple:tercero.tipo==="proveedor"?C.amber:C.blue;
 
   return <React.Fragment>
-    <Modal title={`👤 ${client.name}${st.vs.length>0&&st.cs.length>0?' · Cliente & Proveedor':st.cs.length>0?' · Proveedor':' · Cliente'}`} onClose={onClose} ultra>
+    <Modal title={`👤 ${tercero.name} · ${tipoLabel}`} onClose={onClose} ultra>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        {/* Header ficha */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
           <div style={{display:"flex",gap:12,flexWrap:"wrap",fontSize:11,color:C.muted}}>
-            {client.document&&<span>🪪 {client.document}</span>}
-            {client.phone&&<span>📞 {client.phone}</span>}
-            {client.email&&<span>✉️ {client.email}</span>}
-            {client.city&&<span>📍 {client.city}</span>}
+            {tercero.document&&<span>🪪 {tercero.document}</span>}
+            {tercero.phone&&<span>📞 {tercero.phone}</span>}
+            {tercero.email&&<span>✉️ {tercero.email}</span>}
+            {tercero.city&&<span>📍 {tercero.city}</span>}
             <span>🗓 Desde: <b style={{color:C.text}}>{st.since||"—"}</b></span>
             {st.daysSince!==null&&<span>⏱ Último: <b style={{color:st.daysSince>30?C.amber:C.green}}>{st.daysSince===0?"hoy":`${st.daysSince}d`}</b></span>}
-            <Badge label={(client.status||"activo")==="activo"?"Activo":"Inactivo"} color={(client.status||"activo")==="activo"?C.green:C.slate}/>
-            {(client.tags||[]).map(t=><Badge key={t} label={t} color={TAG_C[t]||C.slate}/>)}
+            <Badge label={tipoLabel} color={tipoColor}/>
+            <Badge label={(tercero.status||"activo")==="activo"?"Activo":"Inactivo"} color={(tercero.status||"activo")==="activo"?C.green:C.slate}/>
+            {(tercero.tags||[]).map(t=><Badge key={t} label={t} color={TAG_C[t]||C.slate}/>)}
           </div>
           <div style={{display:"flex",gap:6}}>
-            {client.phone&&<Btn small variant="sec" onClick={()=>window.open(`https://wa.me/57${(client.phone||"").replace(/[-\s]/g,"")}`,"_blank")}>📲 WA</Btn>}
+            {tercero.phone&&<Btn small variant="sec" onClick={()=>window.open(`https://wa.me/57${(tercero.phone||"").replace(/[-\s]/g,"")}`,"_blank")}>📲 WA</Btn>}
             <Btn small variant="sec" onClick={onEdit}>✏️ Editar</Btn>
           </div>
         </div>
-        {/* Resumen relación comercial */}
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {st.vs.length>0&&<div style={{background:`${C.green}15`,border:`1px solid ${C.green}40`,borderRadius:8,padding:"7px 12px",fontSize:11}}>
             <span style={{color:C.muted}}>💰 Le vendí: </span><b style={{color:C.green}}>{fmt(st.totalVendido)}</b><span style={{color:C.muted}}> · {st.vs.length} ventas</span>
@@ -1161,15 +1140,13 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
             <span style={{color:C.muted}}>{st.saldo>0?"⚠️ Nos debe:":"✅ A su favor:"} </span><b style={{color:st.saldo>0?C.rose:C.blue}}>{fmt(Math.abs(st.saldo))}</b>
           </div>}
         </div>
-        {client.notes&&<p style={{margin:0,fontSize:11,color:C.muted,background:C.panel,padding:"7px 11px",borderRadius:6}}>💬 {client.notes}</p>}
+        {tercero.notes&&<p style={{margin:0,fontSize:11,color:C.muted,background:C.panel,padding:"7px 11px",borderRadius:6}}>💬 {tercero.notes}</p>}
 
-        {/* Tabs */}
         <div style={{display:"flex",gap:4,flexWrap:"wrap",borderBottom:`1px solid ${C.border}`,paddingBottom:8}}>
           {[["resumen","📊 Resumen"],["cuenta","💰 Cuenta"],["libro","📑 Libro Mayor"],["ops","🪙 Operaciones"],["profit","💹 Rentabilidad"]].map(([v,l])=>
             <Pill key={v} label={l} active={tab===v} onClick={()=>setTab(v)}/>)}
         </div>
 
-        {/* RESUMEN */}
         {tab==="resumen"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
             <Stat small label="Total Operaciones" value={st.ops} sub={`${st.vs.length} ventas · ${st.cs.length} compras`}/>
@@ -1185,7 +1162,6 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
           </div>
         </div>}
 
-        {/* CUENTA */}
         {tab==="cuenta"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
             <Stat small label="Saldo" value={Math.abs(st.saldo)<0.01?"Al día":fmtK(Math.abs(st.saldo))} accent={Math.abs(st.saldo)<0.01?C.green:st.saldo>0?C.amber:C.blue} sub={Math.abs(st.saldo)<0.01?"":st.saldo>0?"nos debe":"a su favor"}/>
@@ -1196,12 +1172,11 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
             <Stat small label="Utilidad" value={fmtK(st.profit)} accent={C.green}/>
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <Btn variant="sec" small onClick={()=>setPayCtx({title:"Recibir Pago",party:client.name,direction:"recibido",maxAmount:st.porCobrar})}>💰 Recibir Pago</Btn>
-            <Btn variant="sec" small onClick={()=>setPayCtx({title:"Realizar Pago",party:client.name,direction:"realizado",maxAmount:st.porPagar})}>💸 Pagar</Btn>
+            <Btn variant="sec" small onClick={()=>setPayCtx({title:"Recibir Pago",party:tercero.name,direction:"recibido",maxAmount:st.porCobrar})}>💰 Recibir Pago</Btn>
+            <Btn variant="sec" small onClick={()=>setPayCtx({title:"Realizar Pago",party:tercero.name,direction:"realizado",maxAmount:st.porPagar})}>💸 Pagar</Btn>
           </div>
         </div>}
 
-        {/* LIBRO MAYOR */}
         {tab==="libro"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
           <div style={{display:"flex",gap:12,fontSize:11,color:C.muted,flexWrap:"wrap"}}>
@@ -1215,13 +1190,11 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
           </div>
         </div>}
 
-        {/* OPERACIONES */}
         {tab==="ops"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
           <Tabla cols={opCols} rows={ops} emptyMsg="Sin operaciones"/>
         </div>}
 
-        {/* RENTABILIDAD */}
         {tab==="profit"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
             <Stat small label="Utilidad Total" value={fmtK(st.profit)} accent={C.green}/>
@@ -1244,7 +1217,7 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
         <button onClick={()=>window.print()} style={{padding:"8px 16px",background:"#26A17B",color:"#fff",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>🖨️ Imprimir / PDF</button>
         <button onClick={()=>setPrinting(false)} style={{padding:"8px 16px",background:"#eee",color:"#111",border:"none",borderRadius:7,fontWeight:600,cursor:"pointer"}}>Cerrar</button>
       </div>
-      <h1 style={{margin:"0 0 2px",fontSize:20}}>Estado de Cuenta · {client.name}</h1>
+      <h1 style={{margin:"0 0 2px",fontSize:20}}>Estado de Cuenta · {tercero.name}</h1>
       <p style={{margin:"0 0 12px",fontSize:11,color:"#666"}}>Generado: {new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · Casa de Cambio Pro 3.0</p>
       <div style={{display:"flex",gap:18,flexWrap:"wrap",marginBottom:14,fontSize:12}}>
         <span><b>Ops:</b> {st.ops}</span><span><b>Vol:</b> {fmt(st.volCOP)}</span><span><b>USDT:</b> {fmtQ(st.volBySym.USDT||0,"USDT")}</span>
@@ -1258,46 +1231,27 @@ function ClientFicha({client,sales,purchases,payments,onClose,onEdit,reload,toas
   </React.Fragment>;
 }
 
-// ─── MERGED CONTACTS (clientes + proveedores unidos por nombre) ──────────
-function useContacts(clients, suppliers) {
-  return useMemo(() => {
-    const map = {};
-    clients.forEach(c => {
-      const k = norm(c.name);
-      if (!map[k]) map[k] = {...c, _isClient:true, _isSupplier:false};
-      else { map[k]._isClient = true; map[k] = {...map[k], ...c}; }
-    });
-    suppliers.forEach(s => {
-      const k = norm(s.name);
-      if (!map[k]) map[k] = {...s, _isClient:false, _isSupplier:true};
-      else { map[k]._isSupplier = true; }
-    });
-    return Object.values(map);
-  }, [clients, suppliers]);
-}
-
-function ClientsModule({clients,sales,purchases,payments,reload,toast,suppliers}){
-  const[search,setSearch]=useState("");const[sort,setSort]=useState("profit");const[tagF,setTagF]=useState("all");
+// ─── TERCEROS (clientes + proveedores unificados) ─────────────────────────
+function TercerosModule({terceros,sales,purchases,payments,reload,toast}){
+  const[search,setSearch]=useState("");const[sort,setSort]=useState("profit");const[tagF,setTagF]=useState("all");const[tipoF,setTipoF]=useState("all");
   const[formModal,setFormModal]=useState(false);const[editC,setEditC]=useState(null);const[detail,setDetail]=useState(null);
 
-  const contacts = useContacts(clients, suppliers);
-  const enriched=useMemo(()=>contacts.map(c=>{
-    const st=clientStats(c,sales,purchases,payments);
-    return{...c,_ops:st.ops,_vol:st.volCOP,_profit:st.profit,_usdt:st.volBySym.USDT||0,_last:st.last,_saldo:st.saldo,_daysSince:st.daysSince,_isClient:c._isClient,_isSupplier:c._isSupplier};
-  }),[contacts,sales,purchases,payments]);
+  const enriched=useMemo(()=>terceros.map(t=>{
+    const st=clientStats(t,sales,purchases,payments);
+    return{...t,_ops:st.ops,_vol:st.volCOP,_profit:st.profit,_usdt:st.volBySym.USDT||0,_last:st.last,_saldo:st.saldo,_daysSince:st.daysSince};
+  }),[terceros,sales,purchases,payments]);
 
-  const filtered=enriched.filter(c=>(norm(c.name).includes(norm(search))||norm(c.city).includes(norm(search))||norm(c.phone).includes(norm(search)))
-    &&(tagF==="all"||(tagF==="activo"||tagF==="inactivo"?((c.status||"activo")===tagF):(c.tags||[]).includes(tagF))))
+  const filtered=enriched.filter(t=>(norm(t.name).includes(norm(search))||norm(t.city).includes(norm(search))||norm(t.phone).includes(norm(search)))
+    &&(tipoF==="all"||t.tipo===tipoF)
+    &&(tagF==="all"||(tagF==="activo"||tagF==="inactivo"?((t.status||"activo")===tagF):(t.tags||[]).includes(tagF))))
     .sort((a,b)=>sort==="profit"?b._profit-a._profit:sort==="vol"?b._vol-a._vol:sort==="ops"?b._ops-a._ops:a.name.localeCompare(b.name));
 
-  const delClient=async r=>{if(!confirm(`¿Eliminar cliente ${r.name}?`))return;try{await api.deleteClient(r.id);await reload();toast("Cliente eliminado");}catch(e){toast(e.message,"error");};};
+  const delTercero=async r=>{if(!confirm(`¿Eliminar tercero ${r.name}?`))return;try{await api.deleteTercero(r.id);await reload();toast("Tercero eliminado");}catch(e){toast(e.message,"error");};};
   const cols=[
-    {key:"name",label:"Contacto",render:(v,r)=><div>
+    {key:"name",label:"Tercero",render:(v,r)=><div>
       <b style={{fontSize:13}}>{v}</b>
       <div style={{display:"flex",gap:3,marginTop:2,flexWrap:"wrap"}}>
-        {r._isClient&&r._isSupplier&&<Badge label="Cliente + Proveedor" color={C.purple}/>}
-        {r._isClient&&!r._isSupplier&&<Badge label="Cliente" color={C.blue}/>}
-        {!r._isClient&&r._isSupplier&&<Badge label="Proveedor" color={C.amber}/>}
+        <Badge label={r.tipo==="ambos"?"Cliente + Proveedor":r.tipo==="proveedor"?"Proveedor":"Cliente"} color={r.tipo==="ambos"?C.purple:r.tipo==="proveedor"?C.amber:C.blue}/>
         {(r.tags||[]).map(t=><Badge key={t} label={t} color={TAG_C[t]||C.slate}/>)}
       </div>
     </div>},
@@ -1306,12 +1260,12 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast,suppliers}
     {key:"_profit",label:"Utilidad",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmtK(v)}</b>},
     {key:"_saldo",label:"Saldo",render:v=>Math.abs(v)<0.01?<span style={{color:C.muted}}>Al día</span>:v>0?<Badge label={`Debe ${fmtK(v)}`} color={C.amber}/>:<Badge label={`Favor ${fmtK(-v)}`} color={C.blue}/>},
     {key:"_daysSince",label:"Inactividad",render:v=>v===null?"—":v===0?<span style={{color:C.green}}>Hoy</span>:v>30?<span style={{color:C.rose}}>{v}d</span>:`${v}d`},
-    {key:"cacc",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();delClient(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button>},
+    {key:"cacc",label:"",render:(_,r)=><button onClick={async e=>{e.stopPropagation();delTercero(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button>},
   ];
 
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Contactos" sub={`${contacts.length} contactos · clientes y proveedores · toca para ver ficha`} action="Nuevo Cliente" onAction={()=>{setEditC(null);setFormModal(true);}}
-      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Nombre","Doc","Tel","Ciudad","Ops","VolCOP","USDT","Utilidad","Saldo","Última"],filtered.map(c=>[c.name,c.document||"",c.phone||"",c.city||"",c._ops,c._vol,c._usdt,c._profit,c._saldo,c._last||""]),`clientes-${today()}.csv`)}>📥 Excel</Btn>}/>
+    <Head title="Terceros" sub={`${terceros.length} terceros · clientes y proveedores unificados · toca para ver ficha`} action="Nuevo Tercero" onAction={()=>{setEditC(null);setFormModal(true);}}
+      extra={<Btn small variant="sec" onClick={()=>exportCSV(["Nombre","Rol","Doc","Tel","Ciudad","Ops","VolCOP","USDT","Utilidad","Saldo","Última"],filtered.map(t=>[t.name,t.tipo,t.document||"",t.phone||"",t.city||"",t._ops,t._vol,t._usdt,t._profit,t._saldo,t._last||""]),`terceros-${today()}.csv`)}>📥 Excel</Btn>}/>
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
       <div style={{flex:1,minWidth:200,position:"relative"}}>
         <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.muted,fontSize:12}}>🔍</span>
@@ -1322,46 +1276,22 @@ function ClientsModule({clients,sales,purchases,payments,reload,toast,suppliers}
       </div>
     </div>
     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-      <Pill label="Todos" active={tagF==="all"} onClick={()=>setTagF("all")}/>
+      <Pill label="Todos los roles" active={tipoF==="all"} onClick={()=>setTipoF("all")}/>
+      <Pill label="Cliente" active={tipoF==="cliente"} onClick={()=>setTipoF("cliente")} color={C.blue}/>
+      <Pill label="Proveedor" active={tipoF==="proveedor"} onClick={()=>setTipoF("proveedor")} color={C.amber}/>
+      <Pill label="Ambos" active={tipoF==="ambos"} onClick={()=>setTipoF("ambos")} color={C.purple}/>
+    </div>
+    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+      <Pill label="Todas etiquetas" active={tagF==="all"} onClick={()=>setTagF("all")}/>
       {TAGS.map(t=><Pill key={t} label={t} active={tagF===t} onClick={()=>setTagF(t)} color={TAG_C[t]}/>)}
       <Pill label="Activos" active={tagF==="activo"} onClick={()=>setTagF("activo")} color={C.green}/>
       <Pill label="Inactivos" active={tagF==="inactivo"} onClick={()=>setTagF("inactivo")} color={C.slate}/>
     </div>
-    <Tabla cols={cols} rows={filtered} onRowClick={setDetail} emptyMsg="Sin clientes"/>
-    {formModal&&<ClientFormModal client={editC} onClose={()=>setFormModal(false)} reload={reload} toast={toast}/>}
-    {detail&&<ClientFicha client={clients.find(c=>c.id===detail.id)||detail} sales={sales} purchases={purchases} payments={payments}
-      onClose={()=>setDetail(null)} onEdit={()=>{setEditC(clients.find(c=>c.id===detail.id)||detail);setDetail(null);setFormModal(true);}}
+    <Tabla cols={cols} rows={filtered} onRowClick={setDetail} emptyMsg="Sin terceros"/>
+    {formModal&&<TerceroFormModal tercero={editC} onClose={()=>setFormModal(false)} reload={reload} toast={toast}/>}
+    {detail&&<TerceroFicha tercero={terceros.find(t=>t.id===detail.id)||detail} sales={sales} purchases={purchases} payments={payments}
+      onClose={()=>setDetail(null)} onEdit={()=>{setEditC(terceros.find(t=>t.id===detail.id)||detail);setDetail(null);setFormModal(true);}}
       reload={reload} toast={toast}/>}
-  </div>;
-}
-
-// ─── PROVEEDORES ──────────────────────────────────────────────────────────
-function SuppliersModule({suppliers,purchases,reload,toast}){
-  const[modal,setModal]=useState(false);const empty={name:"",contact:"",phone:"",notes:""};
-  const[form,setForm]=useState(empty);const f=k=>v=>setForm(p=>({...p,[k]:v}));
-  const enriched=suppliers.map(s=>{const ops=purchases.filter(p=>norm(p.supplier)===norm(s.name));return{...s,_ops:ops.length,_vol:ops.reduce((a,p)=>a+p.total,0),_usdt:ops.filter(p=>p.symbol==="USDT").reduce((a,p)=>a+ +p.quantity,0),_pend:ops.reduce((a,p)=>a+pendOf(p),0)};}).sort((a,b)=>b._vol-a._vol);
-  const[editRow,setEditRow]=useState(null);
-  const openEdit=r=>{setEditRow(r);setForm({name:r.name||"",contact:r.contact||"",phone:r.phone||"",notes:r.notes||""});setModal(true);};
-  const del=async r=>{if(!confirm(`¿Eliminar proveedor ${r.name}?`))return;try{await api.deleteSupplier(r.id);await reload();toast("Proveedor eliminado");}catch(e){toast(e.message,"error");};};
-  const saveSup=async()=>{if(!form.name){toast("Nombre requerido","error");return;}try{if(editRow){await api.updateSupplier(editRow.id,form);toast("Proveedor actualizado");}else{await api.addSupplier(form);toast("Proveedor creado");}await reload();setModal(false);setEditRow(null);setForm(empty);}catch(e){toast(e.message,"error");};};
-  const cols=[
-    {key:"name",label:"Proveedor",render:v=><b>{v}</b>},{key:"phone",label:"Teléfono"},
-    {key:"_ops",label:"Compras"},{key:"_vol",label:"Volumen",render:v=><span style={{color:C.amber,fontWeight:600}}>{fmtK(v)}</span>},
-    {key:"_usdt",label:"USDT",render:v=><span style={{color:COIN_C.USDT,fontFamily:"monospace"}}>{fmtQ(v,"USDT")}</span>},
-    {key:"_pend",label:"Le Debemos",render:v=>v>0.01?<b style={{color:C.rose}}>{fmt(v)}</b>:<span style={{color:C.muted}}>Al día</span>},
-    {key:"acc",label:"",render:(_,r)=><div style={{display:"flex",gap:4}}><button onClick={e=>{e.stopPropagation();openEdit(r);}} style={{fontSize:10,background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>✏️</button><button onClick={e=>{e.stopPropagation();del(r);}} style={{fontSize:10,background:"#2D1218",border:`1px solid ${C.rose}`,color:C.rose,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>🗑</button></div>},
-  ];
-  return <div style={{display:"flex",flexDirection:"column",gap:12}}>
-    <Head title="Proveedores de Liquidez" sub={`${suppliers.length} proveedores`} action="Nuevo" onAction={()=>{setEditRow(null);setForm(empty);setModal(true);}}/>
-    <Tabla cols={cols} rows={enriched} emptyMsg="Sin proveedores"/>
-    {modal&&<Modal title={editRow?"Editar Proveedor":"Nuevo Proveedor"} onClose={()=>{setModal(false);setEditRow(null);setForm(empty);}}>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <Inp label="Nombre / alias" value={form.name} onChange={f("name")}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><Inp label="Contacto" value={form.contact} onChange={f("contact")}/><Inp label="Teléfono" value={form.phone} onChange={f("phone")}/></div>
-        <Inp label="Notas" value={form.notes} onChange={f("notes")}/>
-        <Btn onClick={saveSup} full>{editRow?"Actualizar":"Guardar"}</Btn>
-      </div>
-    </Modal>}
   </div>;
 }
 
@@ -1490,7 +1420,7 @@ function ProfitModule({sales,expenses}){
 }
 
 // ─── METAS ────────────────────────────────────────────────────────────────
-function GoalsModule({goals,sales,purchases,clients,cashflow,inventory,reload,toast}){
+function GoalsModule({goals,sales,purchases,terceros,cashflow,inventory,reload,toast}){
   const[scope,setScope]=useState("month");const[modal,setModal]=useState(false);
   const key=scope==="month"?mKey():yKey();const g=goals.find(x=>x.month===key)||{};
   const[form,setForm]=useState({});const f=k=>v=>setForm(p=>({...p,[k]:v}));
@@ -1498,7 +1428,7 @@ function GoalsModule({goals,sales,purchases,clients,cashflow,inventory,reload,to
   const fp=purchases.filter(p=>scope==="month"?p.date.slice(0,7)===key:p.date.slice(0,4)===key);
   const profit=fs.reduce((a,s)=>a+(+s.gross_profit||0),0);
   const vol=fs.reduce((a,s)=>a+s.total,0)+fp.reduce((a,p)=>a+p.total,0);
-  const newCli=clients.filter(c=>c.created_at&&(scope==="month"?c.created_at.slice(0,7)===key:c.created_at.slice(0,4)===key)).length;
+  const newCli=terceros.filter(t=>t.created_at&&(scope==="month"?t.created_at.slice(0,7)===key:t.created_at.slice(0,4)===key)).length;
   const activos=new Set();[...fs,...fp].forEach(o=>{const n=o.client||o.supplier;if(n)activos.add(norm(n));});
   const capital=cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0);
   const invested=inventory.reduce((a,i)=>a+(+i.total_invested||0),0);
@@ -1586,9 +1516,8 @@ const NAV=[
   {id:"buy",icon:"⬇️",label:"Compras",g:"Operaciones"},
   {id:"sell",icon:"⬆️",label:"Ventas",g:"Operaciones"},
   {id:"inv",icon:"₿",label:"Inventario",g:"Operaciones"},
-  {id:"clients",icon:"👥",label:"Clientes",g:"Clientes"},
-  {id:"cartera",icon:"📋",label:"Cartera",g:"Clientes"},
-  {id:"suppliers",icon:"🏦",label:"Proveedores",g:"Clientes"},
+  {id:"terceros",icon:"👥",label:"Terceros",g:"Terceros"},
+  {id:"cartera",icon:"📋",label:"Cartera",g:"Terceros"},
   {id:"treasury",icon:"🏧",label:"Tesorería",g:"Finanzas"},
   {id:"cash",icon:"💳",label:"Flujo de Caja",g:"Finanzas"},
   {id:"exp",icon:"💸",label:"Gastos",g:"Finanzas"},
@@ -1596,23 +1525,23 @@ const NAV=[
   {id:"goals",icon:"🎯",label:"Metas",g:"Gestión"},
   {id:"closings",icon:"🔒",label:"Cierres",g:"Gestión"},
 ];
-const GROUPS=["Principal","Operaciones","Clientes","Finanzas","Gestión"];
+const GROUPS=["Principal","Operaciones","Terceros","Finanzas","Gestión"];
 
 function App(){
   const[user,setUser]=useState(null);const[checking,setChecking]=useState(true);const[active,setActive]=useState("dash");
   const[sidebar,setSidebar]=useState(false);const[loading,setLoading]=useState(false);
   const{toasts,show:toast,remove}=useToast();
-  const[clients,setClients]=useState([]);const[suppliers,setSuppliers]=useState([]);const[inventory,setInventory]=useState([]);
+  const[terceros,setTerceros]=useState([]);const[purchaseLots,setPurchaseLots]=useState([]);const[inventory,setInventory]=useState([]);
   const[purchases,setPurchases]=useState([]);const[sales,setSales]=useState([]);const[kardex,setKardex]=useState([]);
   const[payments,setPayments]=useState([]);const[cashflow,setCashflow]=useState([]);const[expenses,setExpenses]=useState([]);
   const[goals,setGoals]=useState([]);const[closings,setClosings]=useState([]);
 
   const reload=async()=>{
-    const[cl,su,inv,pu,sa,ka,pa,cf,ex,go,cz]=await Promise.all([
-      api.getClients(),api.getSuppliers(),api.getInventory(),api.getPurchases(),api.getSales(),api.getKardex(),
+    const[te,lo,inv,pu,sa,ka,pa,cf,ex,go,cz]=await Promise.all([
+      api.getTerceros(),api.getPurchaseLots(),api.getInventory(),api.getPurchases(),api.getSales(),api.getKardex(),
       api.getPayments(),api.getCashFlow(),api.getExpenses(),api.getGoals(),api.getClosings()
     ]);
-    setClients(cl);setSuppliers(su);setInventory(inv);setPurchases(pu);setSales(sa);setKardex(ka);
+    setTerceros(te);setPurchaseLots(lo);setInventory(inv);setPurchases(pu);setSales(sa);setKardex(ka);
     setPayments(pa);setCashflow(cf);setExpenses(ex);setGoals(go);setClosings(cz);
   };
 
@@ -1629,7 +1558,7 @@ function App(){
   if(!user)return <Login onLogin={handleLogin}/>;
 
   const nav=NAV.find(n=>n.id===active)||NAV[0];
-  const props={clients,suppliers,inventory,purchases,sales,kardex,payments,cashflow,expenses,goals,closings,reload,toast,setActive};
+  const props={terceros,purchaseLots,inventory,purchases,sales,kardex,payments,cashflow,expenses,goals,closings,reload,toast,setActive};
 
   const Module=()=>{
     if(loading)return <div style={{padding:60,textAlign:"center",color:C.muted,fontSize:13}}>Cargando datos...</div>;
@@ -1638,9 +1567,8 @@ function App(){
       case "buy":      return <PurchasesModule {...props}/>;
       case "sell":     return <SalesModule {...props}/>;
       case "inv":      return <InventoryModule {...props}/>;
-      case "clients":  return <ClientsModule {...props}/>;
+      case "terceros": return <TercerosModule {...props}/>;
       case "cartera":  return <CarteraModule {...props}/>;
-      case "suppliers":return <SuppliersModule {...props}/>;
       case "treasury": return <TreasuryModule {...props}/>;
       case "cash":     return <CashFlowModule {...props}/>;
       case "exp":      return <ExpensesModule {...props}/>;
@@ -1708,5 +1636,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
 
