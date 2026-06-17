@@ -78,6 +78,7 @@ const TREAS_ICONS={efectivo:"💵",banco:"🏦",nequi:"💜",daviplata:"🔵",bi
 const fmt=n=>new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0}).format(n||0);
 const fmtK=n=>{const a=Math.abs(n||0);if(a>=1e9)return`$${(n/1e9).toFixed(1)}MM`;if(a>=1e6)return`$${(n/1e6).toFixed(1)}M`;if(a>=1e3)return`$${(n/1e3).toFixed(0)}K`;return`$${Math.round(n||0)}`;};
 const fmtQ=(n,s)=>{const d=s==="BTC"?8:(s==="ETH"||s==="SOL")?4:2;return parseFloat((+n||0).toFixed(d)).toLocaleString("es-CO",{maximumFractionDigits:d});};
+const folioFmt=(n,t)=>n?`${t==="venta"?"V":"C"}-${String(n).padStart(4,"0")}`:"—";
 const today=()=>new Date().toISOString().split("T")[0];
 const norm=s=>(s||"").trim().toLowerCase();
 const mKey=()=>today().slice(0,7);
@@ -524,6 +525,9 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
   const porCobrar=sales.reduce((a,s)=>a+pendOf(s),0);
   const porPagar=purchases.reduce((a,p)=>a+pendOf(p),0);
   const vencidos=sales.filter(s=>stOf(s)==="vencido");
+  const vencidosCompras=purchases.filter(p=>stOf(p)==="vencido");
+  const proxCobrar=sales.filter(s=>pendOf(s)>0.01&&s.due_date&&dBetween(today(),s.due_date)>=0&&dBetween(today(),s.due_date)<=3);
+  const proxPagar=purchases.filter(p=>pendOf(p)>0.01&&p.due_date&&dBetween(today(),p.due_date)>=0&&dBetween(today(),p.due_date)<=3);
 
   const activos=new Set();
   [...sales,...purchases].forEach(o=>{const n=o.client||o.supplier;if(n&&dBetween(o.date,today())<=30)activos.add(norm(n));});
@@ -555,10 +559,13 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
   const avgTick=sales.length?tot(sales)/sales.length:0;
   const bigOps=[...sales,...purchases].filter(o=>dBetween(o.date,today())<=3&&o.total>=Math.max(100e6,avgTick*5));
   const alerts=[];
-  if(vencidos.length)alerts.push({c:C.rose,icon:"🔴",msg:`${vencidos.length} cuenta(s) VENCIDA(S) · ${fmt(vencidos.reduce((a,s)=>a+pendOf(s),0))}`,go:"cartera"});
+  if(vencidos.length)alerts.push({c:C.rose,icon:"🔴",msg:`${vencidos.length} cuenta(s) por cobrar VENCIDA(S) · ${fmt(vencidos.reduce((a,s)=>a+pendOf(s),0))}`,go:"cartera"});
+  if(vencidosCompras.length)alerts.push({c:C.rose,icon:"🔴",msg:`${vencidosCompras.length} cuenta(s) por pagar VENCIDA(S) · ${fmt(vencidosCompras.reduce((a,p)=>a+pendOf(p),0))}`,go:"cartera"});
   if(capital<0)alerts.push({c:C.rose,icon:"⚠️",msg:`Caja negativa: ${fmt(capital)}`,go:"cash"});
-  if(porCobrar>0&&!vencidos.length)alerts.push({c:C.amber,icon:"🟡",msg:`Por cobrar: ${fmt(porCobrar)}`,go:"cartera"});
-  if(porPagar>0)alerts.push({c:C.blue,icon:"🔵",msg:`Por pagar proveedores: ${fmt(porPagar)}`,go:"cartera"});
+  if(proxCobrar.length)alerts.push({c:C.amber,icon:"⏰",msg:`${proxCobrar.length} cuenta(s) por cobrar vence(n) en 3 días · ${fmt(proxCobrar.reduce((a,s)=>a+pendOf(s),0))}`,go:"cartera"});
+  if(proxPagar.length)alerts.push({c:C.amber,icon:"⏰",msg:`${proxPagar.length} cuenta(s) por pagar vence(n) en 3 días · ${fmt(proxPagar.reduce((a,p)=>a+pendOf(p),0))}`,go:"cartera"});
+  if(porCobrar>0&&!vencidos.length&&!proxCobrar.length)alerts.push({c:C.amber,icon:"🟡",msg:`Por cobrar: ${fmt(porCobrar)}`,go:"cartera"});
+  if(porPagar>0&&!vencidosCompras.length&&!proxPagar.length)alerts.push({c:C.blue,icon:"🔵",msg:`Por pagar proveedores: ${fmt(porPagar)}`,go:"cartera"});
   if(usdtInv&&+usdtInv.quantity<=0)alerts.push({c:C.rose,icon:"📉",msg:"Sin inventario USDT",go:"buy"});
   if(bigOps.length)alerts.push({c:C.purple,icon:"💎",msg:`${bigOps.length} operación(es) inusual(es) (últimas 72h)`,go:"sell"});
   if(mGoal&&+mGoal.profit_goal>0){const pct=profit(mS)/+mGoal.profit_goal*100;const dayPct=new Date().getDate()/new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate()*100;
@@ -672,6 +679,7 @@ function PurchasesModule({purchases,inventory,terceros,reload,toast}){
     }catch(e){toast(e.message,"error");}finally{setSaving(false);}
   };
   const cols=[
+    {key:"folio_number",label:"Folio",render:v=><span style={{fontFamily:"monospace",fontSize:11,color:C.muted}}>{folioFmt(v,"compra")}</span>},
     {key:"date",label:"Fecha"},{key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
     {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
     {key:"unit_cost",label:"Precio",render:v=>fmt(v)},{key:"total",label:"Total",render:v=><b>{fmt(v)}</b>},
@@ -764,6 +772,7 @@ function SalesModule({sales,inventory,terceros,reload,toast}){
     catch(e){toast(e.message,"error");}finally{setSaving(false);}
   };
   const cols=[
+    {key:"folio_number",label:"Folio",render:v=><span style={{fontFamily:"monospace",fontSize:11,color:C.muted}}>{folioFmt(v,"venta")}</span>},
     {key:"date",label:"Fecha"},{key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
     {key:"quantity",label:"Cantidad",render:(v,r)=><span style={{fontFamily:"monospace"}}>{fmtQ(v,r.symbol)}</span>},
     {key:"unit_price",label:"P.Venta",render:v=>fmt(v)},{key:"total",label:"Ingreso",render:v=>fmt(v)},
@@ -884,6 +893,42 @@ function CarteraModule({sales,purchases,payments,reload,toast}){
     {tab==="pagar"&&<Tabla cols={mkCols(false)} rows={pagar} emptyMsg="🎉 Sin cuentas por pagar"/>}
     {tab==="pagos"&&<Tabla cols={payCols} rows={payments} emptyMsg="Sin pagos"/>}
     {payCtx&&<PaymentModal ctx={payCtx} onClose={()=>setPayCtx(null)} reload={reload} toast={toast}/>}
+  </div>;
+}
+
+// ─── COMPROBANTES ─────────────────────────────────────────────────────────
+function ComprobantesModule({purchases,sales}){
+  const[search,setSearch]=useState("");const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");const[tipo,setTipo]=useState("all");
+  const docs=[
+    ...purchases.filter(p=>p.receipt_url).map(p=>({...p,_t:"compra",_party:p.supplier})),
+    ...sales.filter(s=>s.receipt_url).map(s=>({...s,_t:"venta",_party:s.client})),
+  ];
+  const filtered=docs.filter(d=>inP(d.date,period,from,to)&&(tipo==="all"||d._t===tipo)&&norm(d._party).includes(norm(search)))
+    .sort((a,b)=>b.date.localeCompare(a.date));
+  const cols=[
+    {key:"folio_number",label:"Folio",render:(v,r)=><span style={{fontFamily:"monospace",fontSize:11,color:C.muted}}>{folioFmt(v,r._t)}</span>},
+    {key:"date",label:"Fecha"},
+    {key:"_t",label:"Tipo",render:v=><span style={{color:v==="venta"?C.rose:C.green,fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{v==="venta"?"↑":"↓"} {v}</span>},
+    {key:"_party",label:"Tercero",render:v=><b>{v||"—"}</b>},
+    {key:"symbol",label:"Moneda",render:v=><b style={{color:COIN_C[v]||C.accent,fontFamily:"monospace"}}>{v}</b>},
+    {key:"total",label:"Total",render:v=>fmt(v)},
+    {key:"receipt_url",label:"Comprobante",render:v=><a href={v} target="_blank" rel="noopener" style={{color:C.blue,fontSize:12}}>📎 Ver archivo</a>},
+  ];
+  return <div style={{display:"flex",flexDirection:"column",gap:12}}>
+    <Head title="Comprobantes" sub={`${docs.length} con archivo adjunto`}/>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <div style={{flex:1,minWidth:200,position:"relative"}}>
+        <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:C.muted,fontSize:12}}>🔍</span>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por cliente o proveedor..." style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 11px 8px 30px",color:C.text,fontSize:13,outline:"none",width:"100%"}}/>
+      </div>
+      <div style={{display:"flex",gap:4}}>
+        <Pill label="Todas" active={tipo==="all"} onClick={()=>setTipo("all")}/>
+        <Pill label="Compras" active={tipo==="compra"} onClick={()=>setTipo("compra")} color={C.green}/>
+        <Pill label="Ventas" active={tipo==="venta"} onClick={()=>setTipo("venta")} color={C.rose}/>
+      </div>
+    </div>
+    <PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/>
+    <Tabla cols={cols} rows={filtered} emptyMsg="Sin comprobantes que coincidan"/>
   </div>;
 }
 
@@ -1485,6 +1530,28 @@ function ClosingsModule({closings,sales,purchases,expenses,cashflow,inventory,re
     try{await api.addClosing({type,period_start:start,period_end:t,purchases_total:fp.reduce((a,p)=>a+p.total,0),sales_total:fs.reduce((a,s)=>a+s.total,0),gross_profit:gross,expenses_total:exp,net_profit:gross-exp,cash_balance:cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0),inventory_value:inventory.reduce((a,i)=>a+(+i.total_invested||0),0),inventory_snapshot:inventory.map(i=>({symbol:i.symbol,qty:+i.quantity,avg:+i.avg_cost,inv:+i.total_invested})),notes:`${fs.length} ventas · ${fp.length} compras`});await reload();toast(`Cierre ${type} generado`);}
     catch(e){toast(e.message,"error");}finally{setSaving(false);}
   };
+  const share=async()=>{
+    const t=today();
+    const fs=sales.filter(s=>s.date===t),fp=purchases.filter(p=>p.date===t),fe=expenses.filter(e=>e.date===t);
+    const gross=fs.reduce((a,s)=>a+(+s.gross_profit||0),0),exp=fe.reduce((a,e)=>a+e.amount,0);
+    const caja=cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0);
+    const txt=`☀️ Cierre del día · ${t}\n\n`+
+      `Compras: ${fp.length} · ${fmt(fp.reduce((a,p)=>a+p.total,0))}\n`+
+      `Ventas: ${fs.length} · ${fmt(fs.reduce((a,s)=>a+s.total,0))}\n`+
+      `Utilidad bruta: ${fmt(gross)}\n`+
+      `Gastos: ${fmt(exp)}\n`+
+      `Utilidad neta: ${fmt(gross-exp)}\n`+
+      `Caja actual: ${fmt(caja)}\n\n`+
+      `Casa de Cambio Pro 3.0`;
+    try{
+      if(navigator.share){await navigator.share({text:txt});}
+      else{await navigator.clipboard.writeText(txt);toast("Resumen copiado al portapapeles");}
+    }catch(e){
+      if(e.name==="AbortError")return;
+      try{await navigator.clipboard.writeText(txt);toast("Resumen copiado al portapapeles");}
+      catch{toast("No se pudo compartir","error");}
+    }
+  };
   const cols=[
     {key:"created_at",label:"Generado",render:v=>v&&v.slice(0,16).replace("T"," ")},
     {key:"type",label:"Tipo",render:v=><Badge label={v} color={v==="diario"?C.blue:v==="semanal"?C.amber:C.purple}/>},
@@ -1499,6 +1566,7 @@ function ClosingsModule({closings,sales,purchases,expenses,cashflow,inventory,re
       <Btn onClick={()=>gen("diario")} disabled={saving} icon="☀️">Cierre Diario</Btn>
       <Btn variant="sec" onClick={()=>gen("semanal")} disabled={saving} icon="📅">Cierre Semanal</Btn>
       <Btn variant="sec" onClick={()=>gen("mensual")} disabled={saving} icon="🗓">Cierre Mensual</Btn>
+      <Btn variant="sec" onClick={share} icon="📲">Compartir resumen del día</Btn>
     </div>
     <Tabla cols={cols} rows={closings} onRowClick={setDetail} emptyMsg="Sin cierres — genera el primero"/>
     {detail&&<Modal title={`Cierre ${detail.type} · ${detail.period_end}`} onClose={()=>setDetail(null)}>
@@ -1516,6 +1584,7 @@ const NAV=[
   {id:"buy",icon:"⬇️",label:"Compras",g:"Operaciones"},
   {id:"sell",icon:"⬆️",label:"Ventas",g:"Operaciones"},
   {id:"inv",icon:"₿",label:"Inventario",g:"Operaciones"},
+  {id:"docs",icon:"🧾",label:"Comprobantes",g:"Operaciones"},
   {id:"terceros",icon:"👥",label:"Terceros",g:"Terceros"},
   {id:"cartera",icon:"📋",label:"Cartera",g:"Terceros"},
   {id:"treasury",icon:"🏧",label:"Tesorería",g:"Finanzas"},
@@ -1567,6 +1636,7 @@ function App(){
       case "buy":      return <PurchasesModule {...props}/>;
       case "sell":     return <SalesModule {...props}/>;
       case "inv":      return <InventoryModule {...props}/>;
+      case "docs":     return <ComprobantesModule {...props}/>;
       case "terceros": return <TercerosModule {...props}/>;
       case "cartera":  return <CarteraModule {...props}/>;
       case "treasury": return <TreasuryModule {...props}/>;
