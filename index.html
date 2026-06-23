@@ -128,7 +128,12 @@ const api={
   },
   async updatePayment(id,p){const{data,error}=await sb.from("crypto_payments").update({date:p.date,party:p.party,direction:p.direction,amount:+p.amount,method:p.method,notes:p.notes}).eq("id",id).select().single();if(error)throw error;return data;},
   async deletePayment(id){const{error}=await sb.from("crypto_payments").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
-  async updateExpense(id,e){const{data,error}=await sb.from("expenses").update({date:e.date,category:e.category,description:e.description,amount:+e.amount}).eq("id",id).select().single();if(error)throw error;return data;},
+  async updateExpense(id,e){
+    const{data,error}=await sb.from("expenses").update({date:e.date,category:e.category,description:e.description,amount:+e.amount}).eq("id",id).select().single();
+    if(error)throw error;
+    await sb.from("cash_flow").update({date:e.date,amount:+e.amount,category:e.category||"Gastos",description:e.description||"Gasto operativo"}).eq("reference_id",id);
+    return data;
+  },
   async updateCashFlow(id,e){const{data,error}=await sb.from("cash_flow").update({date:e.date,type:e.type,description:e.description,amount:+e.amount,method:e.method}).eq("id",id).select().single();if(error)throw error;return data;},
   async getPurchaseLots(){const{data,error}=await sb.from("crypto_purchase_lots_view").select("*");if(error)throw error;return data||[];},
   async getInventory(){const{data,error}=await sb.from("crypto_inventory_view").select("*");if(error)throw error;return data||[];},
@@ -185,8 +190,17 @@ const api={
   async addCashFlow(e){const{data,error}=await sb.from("cash_flow").insert({...e,user_id:UID,amount:+e.amount}).select().single();if(error)throw error;return data;},
   async delCashFlow(id){await sb.from("cash_flow").delete().eq("id",id);},
   async getExpenses(){const{data,error}=await sb.from("expenses").select("*").order("date",{ascending:false});if(error)throw error;return data||[];},
-  async addExpense(e){const{data,error}=await sb.from("expenses").insert({...e,user_id:UID,amount:+e.amount}).select().single();if(error)throw error;return data;},
-  async delExpense(id){await sb.from("expenses").delete().eq("id",id);},
+  async addExpense(e){
+    const{data,error}=await sb.from("expenses").insert({...e,user_id:UID,amount:+e.amount}).select().single();
+    if(error)throw error;
+    await sb.from("cash_flow").insert({user_id:UID,date:e.date,type:"egreso",amount:+e.amount,category:e.category||"Gastos",description:e.description||"Gasto operativo",reference_id:data.id});
+    return data;
+  },
+  async delExpense(id){
+    const{data:ex}=await sb.from("expenses").select("*").eq("id",id).single();
+    await sb.from("expenses").delete().eq("id",id);
+    if(ex)await sb.from("cash_flow").delete().eq("reference_id",id);
+  },
   async getGoals(){const{data}=await sb.from("goals").select("*").in("month",[mKey(),yKey()]);return data||[];},
   async saveGoal(period,g){const{data,error}=await sb.from("goals").upsert({user_id:UID,month:period,...g},{onConflict:"user_id,month"}).select().single();if(error)throw error;return data;},
   async addClosing(c){const{data,error}=await sb.from("crypto_closings").insert({...c,user_id:UID}).select().single();if(error)throw error;return data;},
@@ -1765,3 +1779,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
+
