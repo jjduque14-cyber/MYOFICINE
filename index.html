@@ -53,7 +53,54 @@ window.addEventListener("error",function(e){
   if(document.getElementById("root").innerHTML.trim()==="")
     document.getElementById("root").innerHTML='<div style="background:#1a0e0e;color:#ff8080;font-family:monospace;font-size:13px;padding:20px;white-space:pre-wrap;">Error: '+String(e.message).replace(/</g,"&lt;")+'\nLinea '+e.lineno+' Col '+e.colno+'</div>';
 });
-</script>
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── FIX SALDOS DE TERCEROS · saldo basado en lo realmente pagado ──────────
+// ═══════════════════════════════════════════════════════════════════════════
+function buildLedger(name,sales,purchases,payments){
+  const n=norm(name),rows=[];
+  sales.filter(s=>norm(s.client)===n).forEach(s=>{
+    rows.push({id:"v"+s.id,date:s.date,ts:s.created_at||"",doc:`VTA-${s.id.slice(-6).toUpperCase()}`,concept:`Le vendí ${fmtQ(s.quantity,s.symbol)} ${s.symbol} @ ${fmt(s.unit_price)}`,debit:+s.total,credit:0,kind:"venta",receipt:s.receipt_url});
+    const pg=Math.min(+s.paid||0,+s.total||0);
+    if(pg>0.01)rows.push({id:"vp"+s.id,date:s.date,ts:(s.created_at||"")+"~",doc:`VTA-${s.id.slice(-6).toUpperCase()}`,concept:"Pago recibido",debit:0,credit:pg,kind:"pago",receipt:null});
+  });
+  purchases.filter(p=>norm(p.supplier)===n).forEach(p=>{
+    rows.push({id:"c"+p.id,date:p.date,ts:p.created_at||"",doc:`CMP-${p.id.slice(-6).toUpperCase()}`,concept:`Le compré ${fmtQ(p.quantity,p.symbol)} ${p.symbol} @ ${fmt(p.unit_cost)}`,debit:0,credit:+p.total,kind:"compra",receipt:p.receipt_url});
+    const pg=Math.min(+p.paid||0,+p.total||0);
+    if(pg>0.01)rows.push({id:"cp"+p.id,date:p.date,ts:(p.created_at||"")+"~",doc:`CMP-${p.id.slice(-6).toUpperCase()}`,concept:"Pago realizado",debit:pg,credit:0,kind:"pago",receipt:null});
+  });
+  rows.sort((a,b)=>a.date===b.date?String(a.ts).localeCompare(String(b.ts)):a.date.localeCompare(b.date));
+  let saldo=0;rows.forEach(r=>{saldo+=r.debit-r.credit;r.saldo=saldo;});
+  return rows;
+}
+function clientStats(client,sales,purchases,payments){
+  const n=norm(client.name);
+  const vs=sales.filter(s=>norm(s.client)===n);
+  const cs=purchases.filter(p=>norm(p.supplier)===n);
+  const ps=payments.filter(p=>norm(p.party)===n);
+  const ledger=buildLedger(client.name,sales,purchases,payments);
+  const saldo=ledger.length?ledger[ledger.length-1].saldo:0;
+  const totalVendido=vs.reduce((a,s)=>a+s.total,0);
+  const totalComprado=cs.reduce((a,p)=>a+p.total,0);
+  const volCOP=totalVendido+totalComprado;
+  const volBySym={};[...vs,...cs].forEach(o=>volBySym[o.symbol]=(volBySym[o.symbol]||0)+ +o.quantity);
+  const profit=vs.reduce((a,s)=>a+(+s.gross_profit||0),0);
+  const ops=vs.length+cs.length;
+  const dates=[...vs,...cs].map(o=>o.date).sort();
+  const first=dates[0]||null,last=dates[dates.length-1]||null;
+  const daysSince=last?dBetween(last,today()):null;
+  const since=client.created_at?client.created_at.slice(0,10):first;
+  const months=first?Math.max(1,Math.round(dBetween(first,today())/30)):1;
+  const profits=vs.map(s=>(+s.gross_profit||0));
+  return{vs,cs,ps,ledger,saldo,totalVendido,totalComprado,volCOP,volBySym,profit,ops,first,last,since,daysSince,
+    ticket:ops>0?volCOP/ops:0,freqV:(vs.length/months).toFixed(1),freqC:(cs.length/months).toFixed(1),
+    totalCobrado:vs.reduce((a,s)=>a+Math.min(+s.paid||0,+s.total||0),0),
+    totalPagado:cs.reduce((a,p)=>a+Math.min(+p.paid||0,+p.total||0),0),
+    porCobrar:vs.reduce((a,s)=>a+pendOf(s),0),porPagar:cs.reduce((a,p)=>a+pendOf(p),0),
+    bestOp:profits.length?Math.max(...profits):0,worstOp:profits.length?Math.min(...profits):0,
+    avgProfit:profits.length?profit/profits.length:0,
+  };
+}
+/script>
 <script type="text/plain" id="app-source">
 const{useState,useEffect,useMemo,useCallback,useRef}=React;
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -1992,5 +2039,10 @@ function AuditLauncher(){
 </script>
 </body>
 </html>
+
+
+
+
+
 
 
