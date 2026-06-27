@@ -588,9 +588,10 @@ function FacturaPrint({record,tipo,onClose}){
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────
-function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,setActive,reload,toast}){
+function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,setActive,reload,toast,setFocus}){
   const[rank,setRank]=useState("profit");
   const[cashModal,setCashModal]=useState(null);
+  const[showBig,setShowBig]=useState(false);
   const[cfForm,setCfForm]=useState({amount:"",description:"",category:"",method:"transferencia",date:today()});
   const[cfSaving,setCfSaving]=useState(false);
   const CF_CATS={ingreso:["Aporte de capital","Ingreso externo","Préstamo recibido","Devolución","Otros"],egreso:["Retiro personal","Gasto externo","Pago de préstamo","Otros"]};
@@ -643,7 +644,7 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
   const mGoal=goals.find(g=>g.month===mKey());
   const mExp=expenses.filter(e=>e.date.slice(0,7)===mKey()).reduce((a,e)=>a+e.amount,0);
   const avgTick=sales.length?tot(sales)/sales.length:0;
-  const bigOps=[...sales,...purchases].filter(o=>dBetween(o.date,today())<=3&&o.total>=Math.max(100e6,avgTick*5));
+  const bigOps=[...sales.map(s=>({...s,_t:"venta"})),...purchases.map(p=>({...p,_t:"compra"}))].filter(o=>dBetween(o.date,today())<=3&&o.total>=Math.max(100e6,avgTick*5));
   const alerts=[];
   if(vencidos.length)alerts.push({c:C.rose,icon:"🔴",msg:`${vencidos.length} cuenta(s) por cobrar VENCIDA(S) · ${fmt(vencidos.reduce((a,s)=>a+pendOf(s),0))}`,go:"cartera"});
   if(vencidosCompras.length)alerts.push({c:C.rose,icon:"🔴",msg:`${vencidosCompras.length} cuenta(s) por pagar VENCIDA(S) · ${fmt(vencidosCompras.reduce((a,p)=>a+pendOf(p),0))}`,go:"cartera"});
@@ -653,7 +654,6 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
   if(porCobrar>0&&!vencidos.length&&!proxCobrar.length)alerts.push({c:C.amber,icon:"🟡",msg:`Por cobrar: ${fmt(porCobrar)}`,go:"cartera"});
   if(porPagar>0&&!vencidosCompras.length&&!proxPagar.length)alerts.push({c:C.blue,icon:"🔵",msg:`Por pagar proveedores: ${fmt(porPagar)}`,go:"cartera"});
   if(usdtInv&&+usdtInv.quantity<=0)alerts.push({c:C.rose,icon:"📉",msg:"Sin inventario USDT",go:"buy"});
-  if(bigOps.length)alerts.push({c:C.purple,icon:"💎",msg:`${bigOps.length} operación(es) inusual(es) (últimas 72h)`,go:"sell"});
   if(mGoal&&+mGoal.profit_goal>0){const pct=profit(mS)/+mGoal.profit_goal*100;const dayPct=new Date().getDate()/new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate()*100;
     if(pct>=90&&pct<100)alerts.push({c:C.green,icon:"🎯",msg:`Meta utilidad: ${Math.round(pct)}% · ¡casi!`,go:"goals"});
     else if(pct<dayPct-30)alerts.push({c:C.amber,icon:"⏳",msg:`Meta atrasada: ${Math.round(pct)}% (esperado ${Math.round(dayPct)}%)`,go:"goals"});
@@ -667,6 +667,22 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
       {alerts.map((a,i)=><button key={i} onClick={()=>setActive(a.go)} style={{display:"flex",alignItems:"center",gap:10,background:`${a.c}12`,border:`1px solid ${a.c}40`,borderRadius:8,padding:"9px 13px",color:C.text,fontSize:12,cursor:"pointer",textAlign:"left"}}>
         <span>{a.icon}</span><span style={{flex:1}}>{a.msg}</span><span style={{color:a.c,fontSize:10}}>Ver →</span>
       </button>)}
+    </div>}
+
+    {/* Operaciones inusuales · detalle + ir directo */}
+    {bigOps.length>0&&<div style={{display:"flex",flexDirection:"column",gap:5}}>
+      <button onClick={()=>setShowBig(s=>!s)} style={{display:"flex",alignItems:"center",gap:10,background:`${C.purple}12`,border:`1px solid ${C.purple}40`,borderRadius:8,padding:"9px 13px",color:C.text,fontSize:12,cursor:"pointer",textAlign:"left"}}>
+        <span>💎</span><span style={{flex:1}}>{bigOps.length} operación(es) inusual(es) · montos altos (últimas 72h)</span><span style={{color:C.purple,fontSize:10}}>{showBig?"ocultar ▲":"ver cuáles ▼"}</span>
+      </button>
+      {showBig&&<div style={{display:"flex",flexDirection:"column",gap:4,paddingLeft:4}}>
+        {bigOps.map((o,i)=><button key={i} onClick={()=>{setFocus({module:o._t==="venta"?"sell":"buy",search:String(Math.round(o.total))});setActive(o._t==="venta"?"sell":"buy");}} style={{display:"flex",alignItems:"center",gap:8,background:C.card,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 11px",color:C.text,fontSize:11,cursor:"pointer",textAlign:"left"}}>
+          <span style={{color:o._t==="venta"?C.rose:C.green,fontWeight:700,textTransform:"uppercase",fontSize:9,whiteSpace:"nowrap"}}>{o._t==="venta"?"↑ venta":"↓ compra"}</span>
+          <span style={{fontFamily:"monospace",color:C.muted}}>{folioFmt(o.folio_number,o._t)}</span>
+          <span style={{flex:1}}>{o.client||o.supplier||"—"} · {fmtQ(o.quantity,o.symbol)} {o.symbol} · {o.date}</span>
+          <b style={{color:C.amber,whiteSpace:"nowrap"}}>{fmt(o.total)}</b>
+          <span style={{color:C.purple,fontSize:10,whiteSpace:"nowrap"}}>ir →</span>
+        </button>)}
+      </div>}
     </div>}
 
     {/* Capital unificado · dos bolsillos */}
@@ -783,9 +799,10 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
 }
 
 // ─── COMPRAS ──────────────────────────────────────────────────────────────
-function PurchasesModule({purchases,inventory,terceros,reload,toast}){
+function PurchasesModule({purchases,inventory,terceros,reload,toast,focus,setFocus}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");const[search,setSearch]=useState("");
+  useEffect(()=>{if(focus&&focus.module==="buy"){setSearch(focus.search||"");setPeriod("all");setFocus(null);}},[focus]);
   const empty={date:today(),symbol:"USDT",quantity:"",unit_cost:"",supplier:"",pay_method:"transferencia",notes:"",payType:"contado",initial_paid:"",due_date:""};
   const[form,setForm]=useState(empty);const[file,setFile]=useState(null);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const[editRow,setEditRow]=useState(null);const[factura,setFactura]=useState(null);
@@ -876,10 +893,11 @@ function PurchasesModule({purchases,inventory,terceros,reload,toast}){
 }
 
 // ─── VENTAS ───────────────────────────────────────────────────────────────
-function SalesModule({sales,inventory,terceros,reload,toast}){
+function SalesModule({sales,inventory,terceros,reload,toast,focus,setFocus}){
   const[modal,setModal]=useState(false);const[saving,setSaving]=useState(false);
   const[period,setPeriod]=useState("month");const[from,setFrom]=useState("");const[to,setTo]=useState("");
   const[sym,setSym]=useState("all");const[search,setSearch]=useState("");
+  useEffect(()=>{if(focus&&focus.module==="sell"){setSearch(focus.search||"");setPeriod("all");setSym("all");setFocus(null);}},[focus]);
   const empty={date:today(),symbol:"USDT",quantity:"",unit_price:"",client:"",pay_method:"transferencia",notes:"",payType:"contado",initial_paid:"",due_date:""};
   const[form,setForm]=useState(empty);const[file,setFile]=useState(null);const f=k=>v=>setForm(p=>({...p,[k]:v}));
   const[editRow,setEditRow]=useState(null);const[factura,setFactura]=useState(null);
@@ -1757,7 +1775,7 @@ const NAV=[
 const GROUPS=["Principal","Operaciones","Terceros","Finanzas","Gestión"];
 
 function App(){
-  const[user,setUser]=useState(null);const[checking,setChecking]=useState(true);const[active,setActive]=useState("dash");
+  const[user,setUser]=useState(null);const[checking,setChecking]=useState(true);const[active,setActive]=useState("dash");const[focus,setFocus]=useState(null);
   const[sidebar,setSidebar]=useState(false);const[loading,setLoading]=useState(false);
   const{toasts,show:toast,remove}=useToast();
   const[terceros,setTerceros]=useState([]);const[purchaseLots,setPurchaseLots]=useState([]);const[inventory,setInventory]=useState([]);
@@ -1787,7 +1805,7 @@ function App(){
   if(!user)return <Login onLogin={handleLogin}/>;
 
   const nav=NAV.find(n=>n.id===active)||NAV[0];
-  const props={terceros,purchaseLots,inventory,purchases,sales,kardex,payments,cashflow,expenses,goals,closings,reload,toast,setActive};
+  const props={terceros,purchaseLots,inventory,purchases,sales,kardex,payments,cashflow,expenses,goals,closings,reload,toast,setActive,focus,setFocus};
 
   const Module=()=>{
     if(loading)return <div style={{padding:60,textAlign:"center",color:C.muted,fontSize:13}}>Cargando datos...</div>;
