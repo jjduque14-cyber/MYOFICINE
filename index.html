@@ -1909,6 +1909,24 @@ function AuditWindow({onClose}){
     payments.filter(p=>!p.reference_type||!p.reference_id).forEach(p=>{out.push({sev:"baja",cat:"Pago sin operación",msg:`Pago ${p.direction} de ${fmt(p.amount)} a "${p.party||"?"}" sin vínculo · ${p.date}`,hint:"Pago suelto. Normal si fue abono general."});});
     inventory.forEach(i=>{if(+i.quantity<=0){const vm=sales.filter(s=>s.symbol===i.symbol&&s.date.slice(0,7)===mKey());if(vm.length>0)out.push({sev:"baja",cat:"Inventario en cero con ventas",msg:`${i.symbol} en 0 pero ${vm.length} venta(s) este mes`,hint:"Normal si compraste y vendiste todo."});}});
     if(capitalGlobal<0)out.push({sev:"alta",cat:"Caja negativa",msg:`Capital global negativo: ${fmt(capitalGlobal)}`,hint:"Salió más de lo que entró según Flujo de Caja."});
+
+    // ── FASE 3 · Capital inflado: caja por operaciones vs lo realmente cobrado/pagado ──
+    const opIn=cashflow.filter(e=>e.type==="ingreso"&&/venta|pago recibido/i.test(e.description||"")).reduce((a,e)=>a+ +e.amount,0);
+    const opOut=cashflow.filter(e=>e.type==="egreso"&&/compra|pago a/i.test(e.description||"")).reduce((a,e)=>a+ +e.amount,0);
+    const expectedNet=sales.reduce((a,s)=>a+Math.min(+s.paid||0,+s.total||0),0)-purchases.reduce((a,p)=>a+Math.min(+p.paid||0,+p.total||0),0);
+    const capDiff=(opIn-opOut)-expectedNet;
+    if(Math.abs(capDiff)>10000)out.push({sev:"alta",cat:"Capital inflado / caja descuadrada",msg:`Caja por operaciones (${fmt(opIn-opOut)}) ≠ realmente cobrado − pagado (${fmt(expectedNet)}) · diferencia ${fmt(capDiff)}`,hint:capDiff>0?"Sobra dinero en caja para las operaciones que existen → capital inflado. Causas típicas: movimiento duplicado, o una operación borrada cuyo ingreso/egreso quedó.":"Falta dinero en caja → revisa egresos de más o ingresos no registrados."});
+
+    // ── FASE 3 · Movimiento operativo huérfano (operación borrada, su caja quedó → infla capital) ──
+    const saleIds=new Set(sales.map(s=>s.id)),purchIds=new Set(purchases.map(p=>p.id));
+    cashflow.filter(e=>e.reference_id&&!expIds.has(e.reference_id)&&!saleIds.has(e.reference_id)&&!purchIds.has(e.reference_id)&&/compra|venta|pago/i.test(e.description||"")).forEach(e=>{
+      out.push({sev:"alta",cat:"Movimiento sin operación",msg:`${e.type} de ${fmt(e.amount)} enlazado a una operación que ya no existe · "${e.description||""}" · ${e.date}`,hint:"La operación se borró pero su movimiento quedó en caja, inflando el capital. Bórralo en Flujo de Caja."});
+    });
+
+    // ── FASE 3 · Saldos colgados: operación sobre-cobrada / sobre-pagada ──
+    sales.forEach(s=>{if((+s.paid||0)-(+s.total||0)>1)out.push({sev:"media",cat:"Venta sobre-cobrada",msg:`Cobrado ${fmt(s.paid)} > total ${fmt(s.total)} · ${s.client||"?"} · ${s.date}`,hint:"Genera un saldo a favor colgado. Revisa el abono."});});
+    purchases.forEach(p=>{if((+p.paid||0)-(+p.total||0)>1)out.push({sev:"media",cat:"Compra sobre-pagada",msg:`Pagado ${fmt(p.paid)} > total ${fmt(p.total)} · ${p.supplier||"?"} · ${p.date}`,hint:"Pagaste de más. Genera saldo colgado a tu favor."});});
+
     return out;
   })();
   const sevC={alta:C.rose,media:C.amber,baja:C.slate};
