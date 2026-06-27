@@ -1767,6 +1767,219 @@ function App(){
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── MÓDULO DE AUDITORÍA (autocontenido, se monta solo) ────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+function AuditWindow({onClose}){
+  const[data,setData]=useState(null);
+  const[tab,setTab]=useState("capital");
+  const[period,setPeriod]=useState("all");const[from,setFrom]=useState("");const[to,setTo]=useState("");
+  const[explain,setExplain]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const calcTime=new Date().toLocaleString("es-CO",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"});
+
+  const load=async()=>{
+    setLoading(true);
+    try{
+      const[inv,sa,pu,cf,pa,ex]=await Promise.all([
+        api.getInventory(),api.getSales(),api.getPurchases(),api.getCashFlow(),api.getPayments(),api.getExpenses()
+      ]);
+      setData({inventory:inv,sales:sa,purchases:pu,cashflow:cf,payments:pa,expenses:ex});
+    }catch(e){setData({error:e.message});}
+    finally{setLoading(false);}
+  };
+  useEffect(()=>{load();},[]);
+
+  if(loading||!data)return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:14}}>
+    <div style={{textAlign:"center"}}><div className="pulse" style={{fontSize:32,marginBottom:10}}>🔍</div>Cargando auditoría...</div>
+  </div>;
+  if(data.error)return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center",color:C.rose,fontSize:14,padding:20}}>
+    <div>Error: {data.error} <button onClick={onClose} style={{marginLeft:10,padding:"4px 10px",background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:6}}>Cerrar</button></div>
+  </div>;
+
+  const{inventory,sales,purchases,cashflow,payments,expenses}=data;
+
+  const ledger=(()=>{
+    const rows=[...cashflow].filter(e=>inP(e.date,period,from,to))
+      .sort((a,b)=>a.date===b.date?String(a.created_at||"").localeCompare(String(b.created_at||"")):a.date.localeCompare(b.date));
+    let saldo=0;
+    return rows.map(e=>{const signed=e.type==="ingreso"?+e.amount:-+e.amount;saldo+=signed;return{...e,signed,saldo};});
+  })();
+  const ledgerDesc=[...ledger].reverse();
+
+  const fp=arr=>arr.filter(x=>inP(x.date,period,from,to));
+  const cfP=fp(cashflow);
+  const ingresos=cfP.filter(e=>e.type==="ingreso").reduce((a,e)=>a+ +e.amount,0);
+  const egresos=cfP.filter(e=>e.type==="egreso").reduce((a,e)=>a+ +e.amount,0);
+  const capital=ingresos-egresos;
+  const capitalGlobal=cashflow.reduce((a,e)=>a+(e.type==="ingreso"?+e.amount:-+e.amount),0);
+  const salesP=fp(sales),purchP=fp(purchases),expP=fp(expenses);
+  const porCobrar=salesP.reduce((a,s)=>a+pendOf(s),0);
+  const porPagar=purchP.reduce((a,p)=>a+pendOf(p),0);
+  const utilidad=salesP.reduce((a,s)=>a+(+s.gross_profit||0),0);
+  const volumen=salesP.reduce((a,s)=>a+ +s.total,0)+purchP.reduce((a,p)=>a+ +p.total,0);
+  const gastos=expP.reduce((a,e)=>a+ +e.amount,0);
+  const totalInv=inventory.reduce((a,i)=>a+(+i.total_invested||0),0);
+  const usdtInv=inventory.find(i=>i.symbol==="USDT");
+  const pUSDT=purchP.filter(p=>p.symbol==="USDT"),sUSDT=salesP.filter(s=>s.symbol==="USDT");
+  const qBuy=pUSDT.reduce((a,p)=>a+ +p.quantity,0),qSell=sUSDT.reduce((a,s)=>a+ +s.quantity,0);
+  const avgBuy=qBuy>0?pUSDT.reduce((a,p)=>a+ +p.total,0)/qBuy:0;
+  const avgSell=qSell>0?sUSDT.reduce((a,s)=>a+ +s.total,0)/qSell:0;
+  const spread=avgBuy>0&&avgSell>0?avgSell-avgBuy:0;
+
+  const kpis=[
+    {id:"capital",label:"Capital Disponible",value:fmtK(capital),accent:capital>=0?C.accentL:C.rose,
+      formula:"Σ ingresos − Σ egresos (Flujo de Caja)",
+      detail:`${cfP.filter(e=>e.type==="ingreso").length} ingresos = ${fmt(ingresos)}\n${cfP.filter(e=>e.type==="egreso").length} egresos = ${fmt(egresos)}\nNeto = ${fmt(capital)}`},
+    {id:"inv",label:"Inventario USDT",value:fmtQ(usdtInv?.quantity||0,"USDT"),accent:COIN_C.USDT,
+      formula:"Σ compras USDT − Σ ventas USDT",
+      detail:usdtInv?`Cantidad: ${fmtQ(usdtInv.quantity,"USDT")}\nCPP: ${fmt(usdtInv.avg_cost)}\nInvertido: ${fmt(usdtInv.total_invested)}`:"Sin posición USDT"},
+    {id:"valinv",label:"Valor Inventario",value:fmtK(totalInv),accent:C.amber,
+      formula:"Σ (cantidad × CPP) todas las monedas",
+      detail:inventory.filter(i=>+i.quantity>0).map(i=>`${i.symbol}: ${fmt(i.total_invested)}`).join("\n")||"Sin inventario"},
+    {id:"cobrar",label:"Por Cobrar",value:fmtK(porCobrar),accent:porCobrar>0?C.amber:C.muted,
+      formula:"Σ (total − pagado) de ventas a crédito",
+      detail:`${salesP.filter(s=>pendOf(s)>0.01).length} ventas con saldo\nTotal: ${fmt(porCobrar)}`},
+    {id:"pagar",label:"Por Pagar",value:fmtK(porPagar),accent:porPagar>0?C.rose:C.muted,
+      formula:"Σ (total − pagado) de compras a crédito",
+      detail:`${purchP.filter(p=>pendOf(p)>0.01).length} compras con saldo\nTotal: ${fmt(porPagar)}`},
+    {id:"util",label:"Utilidad",value:fmtK(utilidad),accent:utilidad>=0?C.green:C.rose,
+      formula:"Σ (ingreso − costo CPP) = utilidad bruta",
+      detail:`${salesP.length} ventas\nUtilidad bruta: ${fmt(utilidad)}\nGastos: ${fmt(gastos)}\nUtilidad neta: ${fmt(utilidad-gastos)}`},
+    {id:"vol",label:"Volumen",value:fmtK(volumen),accent:C.blue,
+      formula:"Σ totales ventas + Σ totales compras",
+      detail:`Ventas: ${fmt(salesP.reduce((a,s)=>a+ +s.total,0))} (${salesP.length})\nCompras: ${fmt(purchP.reduce((a,p)=>a+ +p.total,0))} (${purchP.length})`},
+    {id:"spread",label:"Spread USDT",value:spread>0?fmt(spread):"—",accent:C.accentL,
+      formula:"Precio venta prom − Precio compra prom (USDT)",
+      detail:`Compra prom: ${avgBuy>0?fmt(avgBuy):"—"}\nVenta prom: ${avgSell>0?fmt(avgSell):"—"}\nSpread: ${spread>0?fmt(spread):"—"}`},
+  ];
+
+  const issues=(()=>{
+    const out=[];
+    const seen={};
+    cashflow.forEach(e=>{const k=`${e.date}|${e.type}|${Math.round(+e.amount)}|${(e.description||"").trim()}`;if(!seen[k])seen[k]=[];seen[k].push(e);});
+    Object.values(seen).filter(g=>g.length>1).forEach(g=>{
+      out.push({sev:"alta",cat:"Movimiento duplicado",msg:`${g.length}× ${g[0].type} idéntico: "${g[0].description||"(sin desc)"}" · ${fmt(g[0].amount)} · ${g[0].date}`,hint:"Posible doble registro en Flujo de Caja."});
+    });
+    const expIds=new Set(expenses.map(e=>e.id));
+    cashflow.filter(e=>e.reference_id&&!expIds.has(e.reference_id)&&e.type==="egreso").forEach(e=>{
+      const d=(e.description||"").toLowerCase();
+      if(!d.includes("compra")&&!d.includes("venta")&&!d.includes("pago"))
+        out.push({sev:"media",cat:"Egreso huérfano",msg:`Egreso con ref a gasto inexistente: "${e.description||"(sin desc)"}" · ${fmt(e.amount)} · ${e.date}`,hint:"El gasto fue borrado pero el egreso quedó en Caja."});
+    });
+    sales.forEach(s=>{if(s.status==="pagado"&&Math.abs((+s.paid||0)-(+s.total||0))>1)out.push({sev:"media",cat:"Venta descuadrada",msg:`Venta PAGADA pero pagado (${fmt(s.paid||0)}) ≠ total (${fmt(s.total)}) · ${s.client||"?"} · ${s.date}`,hint:"Estado dice pagado pero montos no cuadran."});});
+    purchases.forEach(p=>{if(p.status==="pagado"&&Math.abs((+p.paid||0)-(+p.total||0))>1)out.push({sev:"media",cat:"Compra descuadrada",msg:`Compra PAGADA pero pagado (${fmt(p.paid||0)}) ≠ total (${fmt(p.total)}) · ${p.supplier||"?"} · ${p.date}`,hint:"Estado dice pagado pero montos no cuadran."});});
+    purchases.forEach(p=>{if((p.status==="pendiente"||p.status==="parcial")&&(+p.paid||0)>=(+p.total||0)-1&&(+p.total||0)>0)out.push({sev:"media",cat:"Compra abierta ya pagada",msg:`Compra ${p.status.toUpperCase()} pero ya pagada completa · ${p.supplier||"?"} · ${fmt(p.total)}`,hint:"Debería figurar como pagada."});});
+    sales.forEach(s=>{if((s.status==="pendiente"||s.status==="parcial")&&(+s.paid||0)>=(+s.total||0)-1&&(+s.total||0)>0)out.push({sev:"media",cat:"Venta abierta ya cobrada",msg:`Venta ${s.status.toUpperCase()} pero ya cobrada completa · ${s.client||"?"} · ${fmt(s.total)}`,hint:"Debería figurar como pagada."});});
+    payments.filter(p=>!p.reference_type||!p.reference_id).forEach(p=>{out.push({sev:"baja",cat:"Pago sin operación",msg:`Pago ${p.direction} de ${fmt(p.amount)} a "${p.party||"?"}" sin vínculo · ${p.date}`,hint:"Pago suelto. Normal si fue abono general."});});
+    inventory.forEach(i=>{if(+i.quantity<=0){const vm=sales.filter(s=>s.symbol===i.symbol&&s.date.slice(0,7)===mKey());if(vm.length>0)out.push({sev:"baja",cat:"Inventario en cero con ventas",msg:`${i.symbol} en 0 pero ${vm.length} venta(s) este mes`,hint:"Normal si compraste y vendiste todo."});}});
+    if(capitalGlobal<0)out.push({sev:"alta",cat:"Caja negativa",msg:`Capital global negativo: ${fmt(capitalGlobal)}`,hint:"Salió más de lo que entró según Flujo de Caja."});
+    return out;
+  })();
+  const sevC={alta:C.rose,media:C.amber,baja:C.slate};
+  const sevCount={alta:issues.filter(i=>i.sev==="alta").length,media:issues.filter(i=>i.sev==="media").length,baja:issues.filter(i=>i.sev==="baja").length};
+
+  const ledCols=[
+    {key:"date",label:"Fecha"},
+    {key:"type",label:"Tipo",render:v=><span style={{color:v==="ingreso"?C.green:C.rose,fontWeight:700,fontSize:10,textTransform:"uppercase"}}>{v}</span>},
+    {key:"description",label:"Concepto",render:v=>v||"—"},
+    {key:"signed",label:"Movimiento",render:(v,r)=><b style={{color:r.type==="ingreso"?C.green:C.rose,fontFamily:"monospace"}}>{r.type==="ingreso"?"+":""}{fmt(v)}</b>},
+    {key:"saldo",label:"Saldo",render:v=><b style={{color:v>=0?C.accentL:C.rose,fontFamily:"monospace"}}>{fmt(v)}</b>},
+  ];
+
+  return <div style={{position:"fixed",inset:0,background:"rgba(3,8,18,.97)",zIndex:5000,overflowY:"auto"}}>
+    <div style={{maxWidth:1100,margin:"0 auto",padding:"16px 14px 60px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,position:"sticky",top:0,background:"rgba(3,8,18,.97)",padding:"6px 0",zIndex:2}}>
+        <div><h2 style={{margin:0,fontSize:18,fontWeight:700,color:C.text}}>🔍 Auditoría y Trazabilidad</h2><p style={{margin:"1px 0 0",fontSize:11,color:C.muted}}>Recálculo en vivo · {calcTime}</p></div>
+        <div style={{display:"flex",gap:8}}>
+          <Btn small variant="sec" onClick={load} icon="🔄">Actualizar</Btn>
+          <Btn small onClick={onClose}>✕ Cerrar</Btn>
+        </div>
+      </div>
+
+      <div style={{background:`${C.blue}10`,border:`1px solid ${C.blue}40`,borderRadius:8,padding:"9px 13px",fontSize:11,color:C.text,marginBottom:12}}>
+        🔒 Solo lectura: recalcula y audita sin modificar datos. Toca cualquier KPI para ver su fórmula.
+      </div>
+
+      <div style={{marginBottom:12}}><PeriodBar period={period} setPeriod={setPeriod} from={from} setFrom={setFrom} to={to} setTo={setTo}/></div>
+
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12}}>
+        <Pill label="💰 Trazabilidad Capital" active={tab==="capital"} onClick={()=>setTab("capital")}/>
+        <Pill label="📐 KPIs y Fórmulas" active={tab==="kpis"} onClick={()=>setTab("kpis")}/>
+        <Pill label={`🚨 Inconsistencias (${issues.length})`} active={tab==="audit"} onClick={()=>setTab("audit")} color={issues.length>0?C.rose:C.green}/>
+      </div>
+
+      {tab==="capital"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
+          <Stat small label="Ingresos (período)" value={fmtK(ingresos)} accent={C.green} sub={`${cfP.filter(e=>e.type==="ingreso").length} movs`}/>
+          <Stat small label="Egresos (período)" value={fmtK(egresos)} accent={C.rose} sub={`${cfP.filter(e=>e.type==="egreso").length} movs`}/>
+          <Stat small label="Capital (período)" value={fmtK(capital)} accent={capital>=0?C.accentL:C.rose}/>
+          <Stat small label="Capital GLOBAL" value={fmtK(capitalGlobal)} accent={capitalGlobal>=0?C.accentL:C.rose} sub="histórico"/>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:6}}>
+          <span style={{fontSize:11,color:C.muted}}>Libro mayor · {ledger.length} movimientos · saldo corrido</span>
+          <Btn small variant="sec" onClick={()=>exportCSV(["Fecha","Tipo","Concepto","Método","Movimiento","Saldo"],ledgerDesc.map(r=>[r.date,r.type,r.description||"",r.method||"",r.signed,r.saldo]),`libro-capital-${today()}.csv`)}>📥 Excel</Btn>
+        </div>
+        <Tabla cols={ledCols} rows={ledgerDesc} emptyMsg="Sin movimientos en este período"/>
+      </div>}
+
+      {tab==="kpis"&&<div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {kpis.map(k=><div key={k.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+            <div><div style={{fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:1}}>{k.label}</div><div style={{fontSize:20,fontWeight:700,color:k.accent,fontFamily:"'JetBrains Mono',monospace",marginTop:2}}>{k.value}</div></div>
+            <Btn small variant="sec" onClick={()=>setExplain(explain===k.id?null:k.id)}>{explain===k.id?"Ocultar":"Ver cálculo"}</Btn>
+          </div>
+          {explain===k.id&&<div className="fade-in" style={{marginTop:10,background:C.panel,borderRadius:8,padding:12,display:"flex",flexDirection:"column",gap:8}}>
+            <div><span style={{fontSize:9,color:C.muted,textTransform:"uppercase",fontWeight:600}}>Fórmula</span><div style={{fontSize:12,color:C.accentL,fontFamily:"'JetBrains Mono',monospace",marginTop:2}}>{k.formula}</div></div>
+            <div><span style={{fontSize:9,color:C.muted,textTransform:"uppercase",fontWeight:600}}>Registros usados</span><div style={{fontSize:12,color:C.text,whiteSpace:"pre-wrap",marginTop:2,fontFamily:"'JetBrains Mono',monospace"}}>{k.detail}</div></div>
+            <div style={{display:"flex",gap:14,flexWrap:"wrap",fontSize:10,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>
+              <span>Filtro: <b style={{color:C.text}}>{period==="all"?"Todo":period==="custom"?`${from||"…"} → ${to||"…"}`:period}</b></span>
+              <span>Calculado: <b style={{color:C.text}}>{calcTime}</b></span>
+            </div>
+          </div>}
+        </div>)}
+      </div>}
+
+      {tab==="audit"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8}}>
+          <Stat small label="Alta prioridad" value={sevCount.alta} accent={sevCount.alta>0?C.rose:C.muted}/>
+          <Stat small label="Media" value={sevCount.media} accent={sevCount.media>0?C.amber:C.muted}/>
+          <Stat small label="Baja / aviso" value={sevCount.baja} accent={C.slate}/>
+          <Stat small label="Total" value={issues.length} accent={issues.length>0?C.amber:C.green}/>
+        </div>
+        {issues.length===0&&<div style={{background:`${C.green}10`,border:`1px solid ${C.green}40`,borderRadius:10,padding:24,textAlign:"center",color:C.green,fontSize:13}}>✓ Sin inconsistencias detectadas</div>}
+        {issues.sort((a,b)=>({alta:0,media:1,baja:2}[a.sev]-{alta:0,media:1,baja:2}[b.sev])).map((it,i)=>
+          <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",background:`${sevC[it.sev]}10`,border:`1px solid ${sevC[it.sev]}40`,borderRadius:8,padding:"10px 13px",color:C.text,fontSize:12}}>
+            <span style={{marginTop:1}}>{it.sev==="alta"?"🔴":it.sev==="media"?"🟡":"⚪"}</span>
+            <div style={{flex:1,display:"flex",flexDirection:"column",gap:2}}>
+              <div><Badge label={it.cat} color={sevC[it.sev]}/></div>
+              <span>{it.msg}</span>
+              <span style={{fontSize:10,color:C.muted}}>💡 {it.hint}</span>
+            </div>
+          </div>
+        )}
+      </div>}
+    </div>
+  </div>;
+}
+
+function AuditLauncher(){
+  const[open,setOpen]=useState(false);
+  return <React.Fragment>
+    <button onClick={()=>setOpen(true)} title="Auditoría" style={{position:"fixed",bottom:20,left:20,zIndex:4000,width:52,height:52,borderRadius:"50%",background:C.accent,border:`2px solid ${C.accentL}`,color:"#fff",fontSize:22,cursor:"pointer",boxShadow:"0 6px 20px rgba(38,161,123,.5)",display:"flex",alignItems:"center",justifyContent:"center"}}>🔍</button>
+    {open&&<AuditWindow onClose={()=>setOpen(false)}/>}
+  </React.Fragment>;
+}
+
+(function mountAudit(){
+  try{
+    var host=document.createElement("div");
+    host.id="audit-root";
+    document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(<AuditLauncher/>);
+  }catch(e){console.error("Audit mount error:",e);}
+})();
 </script>
 <script>
 (function(){
