@@ -588,8 +588,14 @@ function FacturaPrint({record,tipo,onClose}){
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────
-function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,setActive}){
+function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,setActive,reload,toast}){
   const[rank,setRank]=useState("profit");
+  const[cashModal,setCashModal]=useState(null);
+  const[cfForm,setCfForm]=useState({amount:"",description:"",category:"",method:"transferencia",date:today()});
+  const[cfSaving,setCfSaving]=useState(false);
+  const CF_CATS={ingreso:["Aporte de capital","Ingreso externo","Préstamo recibido","Devolución","Otros"],egreso:["Retiro personal","Gasto externo","Pago de préstamo","Otros"]};
+  const openCash=type=>{setCfForm({amount:"",description:"",category:CF_CATS[type][0],method:"transferencia",date:today()});setCashModal({type});};
+  const saveCash=async()=>{if(!cfForm.amount||+cfForm.amount<=0){toast("Valor inválido","error");return;}setCfSaving(true);try{await api.addCashFlow({date:cfForm.date,type:cashModal.type,description:`${cfForm.category}${cfForm.description?" · "+cfForm.description:""}`,amount:+cfForm.amount,method:cfForm.method});await reload();setCashModal(null);toast(cashModal.type==="ingreso"?"Dinero ingresado a la caja":"Dinero retirado de la caja");}catch(e){toast(e.message,"error");}finally{setCfSaving(false);}};
 
   const capital=cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0);
   const usdtInv=inventory.find(i=>i.symbol==="USDT");
@@ -682,6 +688,12 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
       </div>
     </div>
 
+    {/* Acciones rápidas de caja */}
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <Btn small variant="sec" icon="💵" onClick={()=>openCash("ingreso")}>Ingresar dinero</Btn>
+      <Btn small variant="sec" icon="💸" onClick={()=>openCash("egreso")}>Sacar dinero</Btn>
+    </div>
+
     {/* KPI Financiero */}
     <div style={{display:"grid",gridTemplateColumns:gW,gap:8}}>
       <Stat label="Por Cobrar" value={fmtK(porCobrar)} accent={porCobrar>0?C.amber:C.muted} sub={`${sales.filter(s=>pendOf(s)>0.01).length} cuentas`} onClick={()=>setActive("cartera")}/>
@@ -751,6 +763,22 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
         </div>)}
       </div>
     </div>
+
+    {cashModal&&<Modal title={cashModal.type==="ingreso"?"💵 Ingresar dinero a la caja":"💸 Sacar dinero de la caja"} onClose={()=>setCashModal(null)}>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{background:`${cashModal.type==="ingreso"?C.green:C.rose}14`,border:`1px solid ${cashModal.type==="ingreso"?C.green:C.rose}`,borderRadius:7,padding:"8px 12px",fontSize:11,color:C.text}}>
+          {cashModal.type==="ingreso"?"Entra dinero externo (no es una venta). Sube tu Capital Disponible.":"Sale dinero (no es una compra). Baja tu Capital Disponible."}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <Inp label="Fecha" type="date" value={cfForm.date} onChange={v=>setCfForm(p=>({...p,date:v}))}/>
+          <Inp label="Valor" type="number" value={cfForm.amount} onChange={v=>setCfForm(p=>({...p,amount:v}))}/>
+        </div>
+        <Sel label="Categoría" value={cfForm.category} onChange={v=>setCfForm(p=>({...p,category:v}))} options={CF_CATS[cashModal.type].map(c=>({value:c,label:c}))}/>
+        <Inp label="Descripción (opcional)" value={cfForm.description} onChange={v=>setCfForm(p=>({...p,description:v}))} placeholder="Ej: aporte socio, retiro personal..."/>
+        <Sel label="Método" value={cfForm.method} onChange={v=>setCfForm(p=>({...p,method:v}))} options={METHODS.map(m=>({value:m,label:m.charAt(0).toUpperCase()+m.slice(1)}))}/>
+        <Btn onClick={saveCash} disabled={cfSaving} full>{cfSaving?"Guardando...":cashModal.type==="ingreso"?"Ingresar a la caja":"Sacar de la caja"}</Btn>
+      </div>
+    </Modal>}
   </div>;
 }
 
