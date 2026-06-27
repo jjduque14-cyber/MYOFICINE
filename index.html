@@ -109,19 +109,21 @@ const api={
   async addTercero(t){const{data,error}=await sb.from("terceros").insert({...t,user_id:UID}).select().single();if(error)throw error;return data;},
   async updateTercero(id,t){const{data,error}=await sb.from("terceros").update(t).eq("id",id).select().single();if(error)throw error;return data;},
   async deleteTercero(id){const{error}=await sb.from("terceros").update({deleted_at:new Date().toISOString()}).eq("id",id);if(error)throw error;},
-  async updatePurchase(id,p){const{data:bef}=await sb.from("crypto_purchases").select("*").eq("id",id).single();const{data,error}=await sb.from("crypto_purchases").update({date:p.date,symbol:p.symbol,quantity:+p.quantity,unit_cost:+p.unit_cost,total:+p.quantity*+p.unit_cost,supplier:p.supplier,pay_method:p.pay_method,notes:p.notes,due_date:p.due_date||null,paid:+p.paid||0,status:p.status}).eq("id",id).select().single();if(error)throw error;await sb.from("cash_flow").update({amount:+p.paid||0,date:p.date}).eq("user_id",UID).eq("reference_id",id).eq("type","egreso");await api.logActivity("editar","compra",id,`Editó compra ${data.symbol} · ${fmt(data.total)} · ${data.supplier||""}`,bef,data);return data;},
+  async updatePurchase(id,p){const{data:bef}=await sb.from("crypto_purchases").select("*").eq("id",id).single();await api._assertUnlocked(bef?.date);const{data,error}=await sb.from("crypto_purchases").update({date:p.date,symbol:p.symbol,quantity:+p.quantity,unit_cost:+p.unit_cost,total:+p.quantity*+p.unit_cost,supplier:p.supplier,pay_method:p.pay_method,notes:p.notes,due_date:p.due_date||null,paid:+p.paid||0,status:p.status}).eq("id",id).select().single();if(error)throw error;await sb.from("cash_flow").update({amount:+p.paid||0,date:p.date}).eq("user_id",UID).eq("reference_id",id).eq("type","egreso");await api.logActivity("editar","compra",id,`Editó compra ${data.symbol} · ${fmt(data.total)} · ${data.supplier||""}`,bef,data);return data;},
   async deletePurchase(id){
     const{data:p,error:pe}=await sb.from("crypto_purchases").select("*").eq("id",id).single();
     if(pe)throw pe;
+    await api._assertUnlocked(p?.date);
     const{error}=await sb.rpc("revert_crypto_purchase",{p_purchase_id:id});
     if(error)throw new Error(error.message.replace(/^.*?:\s*/,""));
     await sb.from("crypto_kardex").delete().eq("reference_id",id);
     await sb.from("cash_flow").delete().eq("user_id",UID).eq("reference_id",id);
     await api.logActivity("borrar","compra",id,`Anuló compra ${p?.symbol||""} · ${fmt(p?.total||0)} · ${p?.supplier||""}`,p,null);
   },
-  async updateSale(id,s){const{data:bef}=await sb.from("crypto_sales").select("*").eq("id",id).single();const{data,error}=await sb.from("crypto_sales").update({date:s.date,symbol:s.symbol,quantity:+s.quantity,unit_price:+s.unit_price,total:+s.quantity*+s.unit_price,client:s.client,pay_method:s.pay_method,notes:s.notes,due_date:s.due_date||null,paid:+s.paid||0,status:s.status}).eq("id",id).select().single();if(error)throw error;await sb.from("cash_flow").update({amount:+s.paid||0,date:s.date}).eq("user_id",UID).eq("reference_id",id).eq("type","ingreso");await api.logActivity("editar","venta",id,`Editó venta ${data.symbol} · ${fmt(data.total)} · ${data.client||""}`,bef,data);return data;},
+  async updateSale(id,s){const{data:bef}=await sb.from("crypto_sales").select("*").eq("id",id).single();await api._assertUnlocked(bef?.date);const{data,error}=await sb.from("crypto_sales").update({date:s.date,symbol:s.symbol,quantity:+s.quantity,unit_price:+s.unit_price,total:+s.quantity*+s.unit_price,client:s.client,pay_method:s.pay_method,notes:s.notes,due_date:s.due_date||null,paid:+s.paid||0,status:s.status}).eq("id",id).select().single();if(error)throw error;await sb.from("cash_flow").update({amount:+s.paid||0,date:s.date}).eq("user_id",UID).eq("reference_id",id).eq("type","ingreso");await api.logActivity("editar","venta",id,`Editó venta ${data.symbol} · ${fmt(data.total)} · ${data.client||""}`,bef,data);return data;},
   async deleteSale(id){
     const{data:bef}=await sb.from("crypto_sales").select("*").eq("id",id).single();
+    await api._assertUnlocked(bef?.date);
     const{error}=await sb.rpc("revert_crypto_sale",{p_sale_id:id});
     if(error)throw new Error(error.message.replace(/^.*?:\s*/,""));
     await sb.from("crypto_kardex").delete().eq("reference_id",id);
@@ -214,6 +216,9 @@ const api={
     try{await sb.from("activity_log").insert({user_id:UID,action,entity,entity_id:entity_id||null,summary,before:before||null,after:after||null});}catch(e){}
   },
   async getActivityLog(){const{data,error}=await sb.from("activity_log").select("*").order("ts",{ascending:false}).limit(300);if(error)return[];return data||[];},
+  async _lockUntil(){try{const{data}=await sb.from("crypto_closings").select("period_end").eq("locked",true).order("period_end",{ascending:false}).limit(1);return data&&data[0]?data[0].period_end:null;}catch(e){return null;}},
+  async _assertUnlocked(date){const lu=await api._lockUntil();if(lu&&date&&String(date)<=lu)throw new Error(`Período cerrado y bloqueado hasta ${lu}. Desbloquéalo en Cierres para modificar esta operación.`);},
+  async setClosingLock(id,locked){const{error}=await sb.from("crypto_closings").update({locked}).eq("id",id);if(error)throw error;await api.logActivity(locked?"bloquear":"desbloquear","cierre",id,`${locked?"Bloqueó":"Desbloqueó"} el período del cierre`,null,null);},
 };
 
 // ─── Ledger & client stats ─────────────────────────────────────────────
@@ -1638,14 +1643,20 @@ function GoalsModule({goals,sales,purchases,terceros,cashflow,inventory,reload,t
 // ─── CIERRES ──────────────────────────────────────────────────────────────
 function ClosingsModule({closings,sales,purchases,expenses,cashflow,inventory,reload,toast}){
   const[saving,setSaving]=useState(false);const[detail,setDetail]=useState(null);
+  const lockUntil=closings.filter(c=>c.locked).reduce((m,c)=>(c.period_end>m?c.period_end:m),"");
   const gen=async(type)=>{
     const t=today();let start=t;
     if(type==="semanal"){const d=new Date();d.setDate(d.getDate()-6);start=d.toISOString().split("T")[0];}
     if(type==="mensual")start=mKey()+"-01";
     const fs=sales.filter(s=>s.date>=start&&s.date<=t),fp=purchases.filter(p=>p.date>=start&&p.date<=t),fe=expenses.filter(e=>e.date>=start&&e.date<=t);
     const gross=fs.reduce((a,s)=>a+(+s.gross_profit||0),0),exp=fe.reduce((a,e)=>a+e.amount,0);
+    const opIn=cashflow.filter(e=>e.type==="ingreso"&&/venta|pago recibido/i.test(e.description||"")).reduce((a,e)=>a+ +e.amount,0);
+    const opOut=cashflow.filter(e=>e.type==="egreso"&&/compra|pago a/i.test(e.description||"")).reduce((a,e)=>a+ +e.amount,0);
+    const expNet=sales.reduce((a,s)=>a+Math.min(+s.paid||0,+s.total||0),0)-purchases.reduce((a,p)=>a+Math.min(+p.paid||0,+p.total||0),0);
+    const ajuste=cashflow.filter(e=>/ajuste de cuadr/i.test(e.description||"")).reduce((a,e)=>a+(e.type==="ingreso"?+e.amount:-+e.amount),0);
+    const reconDiff=Math.round((opIn-opOut)-expNet+ajuste);const reconciled=Math.abs(reconDiff)<500000;
     setSaving(true);
-    try{await api.addClosing({type,period_start:start,period_end:t,purchases_total:fp.reduce((a,p)=>a+p.total,0),sales_total:fs.reduce((a,s)=>a+s.total,0),gross_profit:gross,expenses_total:exp,net_profit:gross-exp,cash_balance:cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0),inventory_value:inventory.reduce((a,i)=>a+(+i.total_invested||0),0),inventory_snapshot:inventory.map(i=>({symbol:i.symbol,qty:+i.quantity,avg:+i.avg_cost,inv:+i.total_invested})),notes:`${fs.length} ventas · ${fp.length} compras`});await reload();toast(`Cierre ${type} generado`);}
+    try{await api.addClosing({type,period_start:start,period_end:t,purchases_total:fp.reduce((a,p)=>a+p.total,0),sales_total:fs.reduce((a,s)=>a+s.total,0),gross_profit:gross,expenses_total:exp,net_profit:gross-exp,cash_balance:cashflow.reduce((a,e)=>a+(e.type==="ingreso"?e.amount:-e.amount),0),inventory_value:inventory.reduce((a,i)=>a+(+i.total_invested||0),0),inventory_snapshot:inventory.map(i=>({symbol:i.symbol,qty:+i.quantity,avg:+i.avg_cost,inv:+i.total_invested})),reconciled,recon_diff:reconDiff,notes:`${fs.length} ventas · ${fp.length} compras`});await reload();toast(reconciled?`Cierre ${type} generado · conciliado ✓`:`Cierre ${type} · ⚠ descuadre ${fmt(reconDiff)}`);}
     catch(e){toast(e.message,"error");}finally{setSaving(false);}
   };
   const share=async()=>{
@@ -1677,6 +1688,8 @@ function ClosingsModule({closings,sales,purchases,expenses,cashflow,inventory,re
     {key:"sales_total",label:"Ventas",render:v=><span style={{color:C.blue}}>{fmtK(v)}</span>},
     {key:"net_profit",label:"Utilidad Neta",render:v=><b style={{color:v>=0?C.green:C.rose}}>{fmtK(v)}</b>},
     {key:"cash_balance",label:"Caja",render:v=>fmtK(v)},{key:"inventory_value",label:"Inventario",render:v=>fmtK(v)},
+    {key:"reconciled",label:"Conciliación",render:(v,r)=>v===false?<Badge label={`⚠ ${fmtK(r.recon_diff||0)}`} color={C.amber}/>:<Badge label="✓ Conciliado" color={C.green}/>},
+    {key:"locked",label:"Bloqueo",render:(v,r)=><button onClick={async e=>{e.stopPropagation();try{await api.setClosingLock(r.id,!v);await reload();toast(!v?"Período bloqueado 🔒":"Período desbloqueado 🔓");}catch(er){toast(er.message,"error");}}} style={{fontSize:10,background:v?"#1f1a0a":C.card2,border:`1px solid ${v?C.amber:C.border}`,color:v?C.amber:C.muted,borderRadius:5,padding:"3px 9px",cursor:"pointer"}}>{v?"🔒 Bloqueado":"🔓 Abierto"}</button>},
   ];
   return <div style={{display:"flex",flexDirection:"column",gap:12}}>
     <Head title="Cierres Contables" extra={<Btn small variant="sec" onClick={()=>exportCSV(["Generado","Tipo","Inicio","Fin","Ventas","Compras","Ut.Bruta","Gastos","Ut.Neta","Caja","Inventario"],closings.map(c=>[c.created_at?.slice(0,16),c.type,c.period_start,c.period_end,c.sales_total,c.purchases_total,c.gross_profit,c.expenses_total,c.net_profit,c.cash_balance,c.inventory_value]),`cierres-${today()}.csv`)}>📥 Excel</Btn>}/>
@@ -1686,10 +1699,11 @@ function ClosingsModule({closings,sales,purchases,expenses,cashflow,inventory,re
       <Btn variant="sec" onClick={()=>gen("mensual")} disabled={saving} icon="🗓">Cierre Mensual</Btn>
       <Btn variant="sec" onClick={share} icon="📲">Compartir resumen del día</Btn>
     </div>
+    {lockUntil&&<div style={{background:`${C.amber}10`,border:`1px solid ${C.amber}40`,borderRadius:9,padding:"9px 13px",fontSize:12,color:C.text}}>🔒 Períodos bloqueados hasta <b>{lockUntil}</b> · las compras y ventas con fecha hasta ese día no se pueden editar ni anular. Desbloquea el cierre para modificarlas.</div>}
     <Tabla cols={cols} rows={closings} onRowClick={setDetail} emptyMsg="Sin cierres — genera el primero"/>
     {detail&&<Modal title={`Cierre ${detail.type} · ${detail.period_end}`} onClose={()=>setDetail(null)}>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {[["Período",`${detail.period_start} → ${detail.period_end}`],["Ventas",fmt(detail.sales_total)],["Compras",fmt(detail.purchases_total)],["Utilidad Bruta",fmt(detail.gross_profit)],["Gastos",fmt(detail.expenses_total)],["Utilidad Neta",fmt(detail.net_profit)],["Caja",fmt(detail.cash_balance)],["Inventario",fmt(detail.inventory_value)]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,padding:"6px 0",fontSize:12}}><span style={{color:C.muted}}>{l}</span><b>{v}</b></div>)}
+        {[["Período",`${detail.period_start} → ${detail.period_end}`],["Ventas",fmt(detail.sales_total)],["Compras",fmt(detail.purchases_total)],["Utilidad Bruta",fmt(detail.gross_profit)],["Gastos",fmt(detail.expenses_total)],["Utilidad Neta",fmt(detail.net_profit)],["Caja",fmt(detail.cash_balance)],["Inventario",fmt(detail.inventory_value)],["Conciliación",detail.reconciled===false?`⚠ Descuadre ${fmt(detail.recon_diff||0)}`:"✓ Conciliado"],["Estado",detail.locked?"🔒 Bloqueado":"🔓 Abierto"]].map(([l,v])=><div key={l} style={{display:"flex",justifyContent:"space-between",borderBottom:`1px solid ${C.border}`,padding:"6px 0",fontSize:12}}><span style={{color:C.muted}}>{l}</span><b>{v}</b></div>)}
         {detail.inventory_snapshot&&<div><h4 style={{margin:"8px 0",fontSize:12}}>Inventario al cierre</h4>{(detail.inventory_snapshot||[]).filter(i=>i.qty>0).map(i=><div key={i.symbol} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"3px 0",color:C.muted}}><span style={{color:COIN_C[i.symbol]||C.text,fontFamily:"monospace"}}>{i.symbol}</span><span>{fmtQ(i.qty,i.symbol)} · CPP {fmt(i.avg)} · {fmt(i.inv)}</span></div>)}</div>}
       </div>
     </Modal>}
