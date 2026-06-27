@@ -1914,8 +1914,11 @@ function AuditWindow({onClose}){
     const opIn=cashflow.filter(e=>e.type==="ingreso"&&/venta|pago recibido/i.test(e.description||"")).reduce((a,e)=>a+ +e.amount,0);
     const opOut=cashflow.filter(e=>e.type==="egreso"&&/compra|pago a/i.test(e.description||"")).reduce((a,e)=>a+ +e.amount,0);
     const expectedNet=sales.reduce((a,s)=>a+Math.min(+s.paid||0,+s.total||0),0)-purchases.reduce((a,p)=>a+Math.min(+p.paid||0,+p.total||0),0);
-    const capDiff=(opIn-opOut)-expectedNet;
-    if(Math.abs(capDiff)>10000)out.push({sev:"alta",cat:"Capital inflado / caja descuadrada",msg:`Caja por operaciones (${fmt(opIn-opOut)}) ≠ realmente cobrado − pagado (${fmt(expectedNet)}) · diferencia ${fmt(capDiff)}`,hint:capDiff>0?"Sobra dinero en caja para las operaciones que existen → capital inflado. Causas típicas: movimiento duplicado, o una operación borrada cuyo ingreso/egreso quedó.":"Falta dinero en caja → revisa egresos de más o ingresos no registrados."});
+    const capDiffRaw=(opIn-opOut)-expectedNet;
+    const ajusteNet=cashflow.filter(e=>/ajuste de cuadr/i.test(e.description||"")).reduce((a,e)=>a+(e.type==="ingreso"?+e.amount:-+e.amount),0);
+    const capDiffNet=capDiffRaw+ajusteNet;
+    if(Math.abs(capDiffNet)>500000)out.push({sev:"alta",cat:"Capital inflado / caja descuadrada",msg:`Caja por operaciones (${fmt(opIn-opOut)}) ≠ realmente cobrado − pagado (${fmt(expectedNet)}) · diferencia neta ${fmt(capDiffNet)} tras ajustes documentados`,hint:capDiffNet>0?"Sobra dinero en caja sin justificación → capital inflado. Revisa duplicados o una operación borrada cuyo movimiento quedó.":"Falta dinero en caja → revisa egresos de más o ingresos no registrados."});
+    else if(Math.abs(capDiffRaw)>100000)out.push({sev:"baja",cat:"Caja operativa compensada con ajuste",msg:`Operaciones descuadradas por ${fmt(capDiffRaw)}, ya compensado con ajustes de cuadre documentados (${fmt(-ajusteNet)}) · capital neto correcto`,hint:"Sin acción necesaria. Si quieres dejar el Flujo de Caja impecable por dentro, se puede reconstruir con respaldo previo."});
 
     // ── FASE 3 · Movimiento operativo huérfano (operación borrada, su caja quedó → infla capital) ──
     const saleIds=new Set(sales.map(s=>s.id)),purchIds=new Set(purchases.map(p=>p.id));
