@@ -647,11 +647,27 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
       </button>)}
     </div>}
 
+    {/* Capital unificado · dos bolsillos */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
+      <div onClick={()=>setActive("cash")} style={{background:`linear-gradient(135deg,${C.accent}20,${C.card})`,border:`1px solid ${C.accent}55`,borderRadius:12,padding:"15px 18px",cursor:"pointer"}}>
+        <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>💵 Bolsillo Efectivo · COP</div>
+        <div style={{fontSize:23,fontWeight:800,color:capital>=0?C.accentL:C.rose,fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{fmtK(capital)}</div>
+        <div style={{fontSize:10,color:C.muted,marginTop:3}}>caja disponible · ver flujo →</div>
+      </div>
+      <div onClick={()=>setActive("inv")} style={{background:`linear-gradient(135deg,${COIN_C.USDT}20,${C.card})`,border:`1px solid ${COIN_C.USDT}55`,borderRadius:12,padding:"15px 18px",cursor:"pointer"}}>
+        <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>🪙 Bolsillo USDT</div>
+        <div style={{fontSize:23,fontWeight:800,color:COIN_C.USDT,fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{fmtQ(usdtInv?.quantity||0,"USDT")}</div>
+        <div style={{fontSize:10,color:C.muted,marginTop:3}}>≈ {fmtK(totalInv)} COP{usdtInv&&+usdtInv.quantity>0?` · CPP ${fmt(usdtInv.avg_cost)}`:""} · ver inventario →</div>
+      </div>
+      <div style={{background:`linear-gradient(135deg,${C.blue}20,${C.card})`,border:`1px solid ${C.blue}55`,borderRadius:12,padding:"15px 18px"}}>
+        <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>💰 Capital Total Operativo</div>
+        <div style={{fontSize:23,fontWeight:800,color:C.text,fontFamily:"'JetBrains Mono',monospace",marginTop:4}}>{fmtK(capital+totalInv)}</div>
+        <div style={{fontSize:10,color:C.muted,marginTop:3}}>efectivo + USDT · neto con cartera: {fmtK(capital+totalInv+porCobrar-porPagar)}</div>
+      </div>
+    </div>
+
     {/* KPI Financiero */}
     <div style={{display:"grid",gridTemplateColumns:gW,gap:8}}>
-      <Stat label="Capital Disponible" value={fmtK(capital)} accent={capital>=0?C.accentL:C.rose} sub="caja actual"/>
-      <Stat label="Inventario USDT" value={fmtQ(usdtInv?.quantity||0,"USDT")} accent={COIN_C.USDT} sub={usdtInv?`CPP ${fmt(usdtInv.avg_cost)}`:"sin stock"}/>
-      <Stat label="Valor Inventario" value={fmtK(totalInv)} accent={C.amber} sub="COP invertidos"/>
       <Stat label="Por Cobrar" value={fmtK(porCobrar)} accent={porCobrar>0?C.amber:C.muted} sub={`${sales.filter(s=>pendOf(s)>0.01).length} cuentas`} onClick={()=>setActive("cartera")}/>
       <Stat label="Por Pagar" value={fmtK(porPagar)} accent={porPagar>0?C.rose:C.muted} sub={`${purchases.filter(p=>pendOf(p)>0.01).length} cuentas`} onClick={()=>setActive("cartera")}/>
       <Stat label="Clientes Activos" value={activos.size} sub="últimos 30 días" onClick={()=>setActive("terceros")}/>
@@ -659,22 +675,22 @@ function Dashboard({inventory,sales,purchases,cashflow,payments,goals,expenses,s
 
     {/* Utilidades */}
     <div style={{display:"grid",gridTemplateColumns:gW,gap:8}}>
-      <Stat label="Utilidad Hoy" value={fmtK(profit(dS))} accent={profit(dS)>=0?C.green:C.rose} sub={`${dS.length}v · ${dP.length}c`}/>
-      <Stat label="Utilidad Semana" value={fmtK(profit(wS))} accent={C.green}/>
-      <Stat label="Utilidad Mes" value={fmtK(profit(mS))} accent={C.green} spark={profitSeries} sparkColor={C.green}/>
-      <Stat label="Utilidad Neta Mes" value={fmtK(profit(mS)-mExp)} accent={profit(mS)-mExp>=0?C.accentL:C.rose} sub={`gastos: ${fmtK(mExp)}`}/>
-      <Stat label="Volumen Hoy" value={fmtK(tot(dS)+tot(dP))} accent={C.blue} sub={`${dS.length+dP.length} ops`}/>
-      <Stat label="Volumen Mes" value={fmtK(tot(mS)+tot(mP))} accent={C.blue} spark={volSeries} sparkColor={C.blue}/>
+      <Stat label="Utilidad Hoy" value={fmtK(profit(dS))} accent={profit(dS)>=0?C.green:C.rose} sub={`${dS.length}v · ${dP.length}c`} onClick={()=>setActive("profit")}/>
+      <Stat label="Utilidad Semana" value={fmtK(profit(wS))} accent={C.green} onClick={()=>setActive("profit")}/>
+      <Stat label="Utilidad Mes" value={fmtK(profit(mS))} accent={C.green} spark={profitSeries} sparkColor={C.green} onClick={()=>setActive("profit")}/>
+      <Stat label="Utilidad Neta Mes" value={fmtK(profit(mS)-mExp)} accent={profit(mS)-mExp>=0?C.accentL:C.rose} sub={`gastos: ${fmtK(mExp)}`} onClick={()=>setActive("profit")}/>
+      <Stat label="Volumen Hoy" value={fmtK(tot(dS)+tot(dP))} accent={C.blue} sub={`${dS.length+dP.length} ops`} onClick={()=>setActive("sell")}/>
+      <Stat label="Volumen Mes" value={fmtK(tot(mS)+tot(mP))} accent={C.blue} spark={volSeries} sparkColor={C.blue} onClick={()=>setActive("sell")}/>
     </div>
 
     {/* USDT indicators */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:8}}>
-      <Stat small label="Precio Compra USDT" value={avgBuy>0?fmt(avgBuy):"—"} sub="promedio mes"/>
-      <Stat small label="Precio Venta USDT" value={avgSell>0?fmt(avgSell):"—"} sub="promedio mes"/>
+      <Stat small label="Precio Compra USDT" value={avgBuy>0?fmt(avgBuy):"—"} sub="promedio mes" onClick={()=>setActive("buy")}/>
+      <Stat small label="Precio Venta USDT" value={avgSell>0?fmt(avgSell):"—"} sub="promedio mes" onClick={()=>setActive("sell")}/>
       <Stat small label="Spread" value={spread>0?fmt(spread):"—"} accent={C.accentL} sub={spread>0&&avgBuy>0?`${((spread/avgBuy)*100).toFixed(2)}%`:""}/>
       <Stat small label="Utilidad Año" value={fmtK(profit(inArr(sales,"year")))} accent={C.accentL}/>
       <Stat small label="Utilidad Acumulada" value={fmtK(profit(sales))} accent={C.green} sub="histórica"/>
-      <Stat small label="Margen Mes" value={`${tot(mS)>0?((profit(mS)/tot(mS))*100).toFixed(2):0}%`} accent={C.accentL}/>
+      <Stat small label="Margen Mes" value={`${tot(mS)>0?((profit(mS)/tot(mS))*100).toFixed(2):0}%`} accent={C.accentL} onClick={()=>setActive("profit")}/>
     </div>
 
     {/* Gráficas + Rankings */}
@@ -1062,7 +1078,7 @@ function InventoryModule({inventory,kardex,purchaseLots}){
 }
 
 // ─── TESORERÍA ────────────────────────────────────────────────────────────
-function TreasuryModule({reload,toast}){
+function TreasuryModule({reload,toast,cashflow}){
   const[accounts,setAccounts]=useState([]);const[moves,setMoves]=useState([]);
   const[modal,setModal]=useState(false);const[movModal,setMovModal]=useState(false);
   const[loading,setLoading]=useState(true);
@@ -1079,6 +1095,8 @@ function TreasuryModule({reload,toast}){
   useEffect(()=>{load();},[]);
 
   const totalCOP=accounts.filter(a=>a.currency==="COP").reduce((a,x)=>a+x.balance,0);
+  const capitalSistema=(cashflow||[]).reduce((a,e)=>a+(e.type==="ingreso"?+e.amount:-+e.amount),0);
+  const diffCaja=capitalSistema-totalCOP;
 
   const saveAcc=async()=>{
     if(!form.name){toast("Nombre requerido","error");return;}
@@ -1117,6 +1135,16 @@ function TreasuryModule({reload,toast}){
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8}}>
       <Stat small label="Total COP" value={fmtK(totalCOP)} accent={C.accentL}/>
       <Stat small label="Cuentas" value={accounts.length}/>
+    </div>
+    <div style={{background:`${Math.abs(diffCaja)<1000?C.green:C.amber}10`,border:`1px solid ${Math.abs(diffCaja)<1000?C.green:C.amber}40`,borderRadius:10,padding:"11px 14px",fontSize:12,color:C.text,display:"flex",flexDirection:"column",gap:3}}>
+      <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"center"}}>
+        <span>🔗 <b>Conciliación con la caja real</b></span>
+        <span style={{color:C.muted}}>Caja del sistema: <b style={{color:C.text}}>{fmt(capitalSistema)}</b></span>
+        <span style={{color:C.muted}}>Tesorería (bolsillos): <b style={{color:C.text}}>{fmt(totalCOP)}</b></span>
+        <span style={{color:C.muted}}>Diferencia: <b style={{color:Math.abs(diffCaja)<1000?C.green:C.amber}}>{fmt(diffCaja)}</b></span>
+      </div>
+      {Math.abs(diffCaja)>=1000&&<span style={{fontSize:10,color:C.muted}}>Para cuadrar: registra en cada cuenta el saldo físico real. La suma de tus bolsillos debería igualar la caja del sistema ({fmt(capitalSistema)}).</span>}
+      {Math.abs(diffCaja)<1000&&accounts.length>0&&<span style={{fontSize:10,color:C.green}}>✓ Tus bolsillos cuadran con la caja del sistema.</span>}
     </div>
     {loading?<div style={{padding:24,textAlign:"center",color:C.muted}}>Cargando...</div>:<React.Fragment>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
