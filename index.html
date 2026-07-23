@@ -402,7 +402,13 @@ function Login({onLogin}){
   const doLogin=async()=>{
     setErr("");setLoading(true);
     try{onLogin(await api.login(email,pass));}
-    catch(e){setErr("Correo o contraseña incorrectos");}
+    catch(e){
+      const m=String((e&&e.message)||"").toLowerCase();
+      if(m.includes("invalid login")||m.includes("credential"))setErr("Correo o contraseña incorrectos");
+      else if(m.includes("not confirmed"))setErr("Falta confirmar tu correo. Revisa tu bandeja y la carpeta de spam.");
+      else if(m.includes("fetch")||m.includes("network")||m.includes("load failed")||m.includes("timeout")||m.includes("504")||m.includes("503"))setErr("Sin conexión con el servidor. Si el sistema estuvo varios días sin uso puede estar despertando: espera 2-3 minutos y vuelve a intentar.");
+      else setErr("No se pudo iniciar sesión: "+((e&&e.message)||"error desconocido"));
+    }
     finally{setLoading(false);}
   };
 
@@ -2129,6 +2135,7 @@ function AuditLauncher(){
 </script>
 </body>
 </html>
+
 
 
 
